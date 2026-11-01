@@ -2,8 +2,6 @@
 docs/private/
 CLAUDE.local.md
 .claude/settings.local.json
-TODO.md
-docs/decisions/
 
 # Сборка Wails и Go
 build/bin/
