@@ -21,10 +21,14 @@ func main() {
 	})
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:  "Pitch",
-		Width:  1000,
-		Height: 700,
-		URL:    "/",
+		Title:       "Pitch",
+		Width:       1000,
+		Height:      700,
+		URL:         "/",
+		Permissions: windowPermissions(),
+		Windows: application.WindowsWindow{
+			Permissions: windowsPermissions(),
+		},
 	})
 
 	if err := app.Run(); err != nil {
