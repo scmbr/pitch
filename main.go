@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"fmt"
 	"log"
 
+	"github.com/scmbr/pitch/internal/storage"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -11,10 +14,26 @@ import (
 var assets embed.FS
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	dataDir, err := resolveDataDir()
 	if err != nil {
-		log.Fatalf("cannot prepare the data folder: %v", err)
+		return fmt.Errorf("cannot prepare the data folder: %w", err)
 	}
+
+	db, err := storage.Open(context.Background(), storage.Path(dataDir))
+	if err != nil {
+		return fmt.Errorf("cannot open the database: %w", err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("closing the database: %v", err)
+		}
+	}()
 
 	app := application.New(application.Options{
 		Name:        "Pitch",
@@ -36,7 +55,5 @@ func main() {
 		},
 	})
 
-	if err := app.Run(); err != nil {
-		log.Fatal(err)
-	}
+	return app.Run()
 }
