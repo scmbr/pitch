@@ -24,12 +24,21 @@ var (
 	ErrDataDirNotAbsolute = errors.New("settings: data folder must be an absolute path")
 	ErrDataDirNotWritable = errors.New("settings: data folder is not writable")
 	ErrCorrupt            = errors.New("settings: settings file is corrupt")
+	ErrLanguageUnknown    = errors.New("settings: unknown language")
+)
+
+// Interface languages. LanguageAuto follows the system language.
+const (
+	LanguageAuto = "auto"
+	LanguageRU   = "ru"
+	LanguageEN   = "en"
 )
 
 // Settings is everything the user can configure. New fields must keep a
 // usable zero value so that older files still load.
 type Settings struct {
-	DataDir string `json:"dataDir"`
+	DataDir  string `json:"dataDir"`
+	Language string `json:"language"`
 }
 
 // Validate checks the values without touching the disk.
@@ -39,6 +48,11 @@ func (s Settings) Validate() error {
 	}
 	if !filepath.IsAbs(s.DataDir) {
 		return fmt.Errorf("%w: %q", ErrDataDirNotAbsolute, s.DataDir)
+	}
+	switch s.Language {
+	case LanguageAuto, LanguageRU, LanguageEN:
+	default:
+		return fmt.Errorf("%w: %q", ErrLanguageUnknown, s.Language)
 	}
 	return nil
 }
@@ -51,6 +65,9 @@ type Store struct {
 
 // NewStore returns a store for the file at path. A missing file yields defaults.
 func NewStore(path string, defaults Settings) *Store {
+	if defaults.Language == "" {
+		defaults.Language = LanguageAuto
+	}
 	return &Store{path: path, defaults: defaults}
 }
 
@@ -76,12 +93,18 @@ func (s *Store) Load() (Settings, error) {
 	if loaded.DataDir == "" {
 		loaded.DataDir = s.defaults.DataDir
 	}
+	if loaded.Language == "" {
+		loaded.Language = LanguageAuto
+	}
 	return loaded, nil
 }
 
 // Save validates and writes the settings. The file is replaced atomically so
 // a crash cannot leave a half-written file.
 func (s *Store) Save(v Settings) error {
+	if v.Language == "" {
+		v.Language = LanguageAuto
+	}
 	if err := v.Validate(); err != nil {
 		return err
 	}
@@ -132,7 +155,7 @@ func DefaultDataDir() (string, error) {
 
 // PrepareDataDir creates the folder if needed and checks that files can be written to it.
 func PrepareDataDir(dir string) error {
-	if err := (Settings{DataDir: dir}).Validate(); err != nil {
+	if err := (Settings{DataDir: dir, Language: LanguageAuto}).Validate(); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {

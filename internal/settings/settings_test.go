@@ -29,7 +29,7 @@ func TestLoadMissingFileReturnsDefaults(t *testing.T) {
 
 func TestSaveThenLoadRoundTrip(t *testing.T) {
 	store, _ := newTestStore(t)
-	want := Settings{DataDir: filepath.Join(t.TempDir(), "my-data")}
+	want := Settings{DataDir: filepath.Join(t.TempDir(), "my-data"), Language: LanguageRU}
 
 	if err := store.Save(want); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -45,8 +45,8 @@ func TestSaveThenLoadRoundTrip(t *testing.T) {
 
 func TestSaveOverwritesAndLeavesNoTempFiles(t *testing.T) {
 	store, path := newTestStore(t)
-	first := Settings{DataDir: filepath.Join(t.TempDir(), "a")}
-	second := Settings{DataDir: filepath.Join(t.TempDir(), "b")}
+	first := Settings{DataDir: filepath.Join(t.TempDir(), "a"), Language: LanguageAuto}
+	second := Settings{DataDir: filepath.Join(t.TempDir(), "b"), Language: LanguageEN}
 
 	for _, v := range []Settings{first, second} {
 		if err := store.Save(v); err != nil {
@@ -72,7 +72,7 @@ func TestSaveOverwritesAndLeavesNoTempFiles(t *testing.T) {
 
 func TestSaveRejectsInvalidSettingsAndKeepsOldFile(t *testing.T) {
 	store, _ := newTestStore(t)
-	good := Settings{DataDir: filepath.Join(t.TempDir(), "ok")}
+	good := Settings{DataDir: filepath.Join(t.TempDir(), "ok"), Language: LanguageAuto}
 	if err := store.Save(good); err != nil {
 		t.Fatal(err)
 	}
@@ -84,6 +84,7 @@ func TestSaveRejectsInvalidSettingsAndKeepsOldFile(t *testing.T) {
 	}{
 		{"empty", Settings{}, ErrDataDirEmpty},
 		{"relative", Settings{DataDir: filepath.Join("some", "dir")}, ErrDataDirNotAbsolute},
+		{"unknown language", Settings{DataDir: good.DataDir, Language: "de"}, ErrLanguageUnknown},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -137,6 +138,28 @@ func TestLoadFillsEmptyDataDirFromDefaultsAndIgnoresUnknownFields(t *testing.T) 
 	}
 	if got != store.defaults {
 		t.Errorf("got %+v, want defaults %+v", got, store.defaults)
+	}
+}
+
+func TestEmptyLanguageMeansAuto(t *testing.T) {
+	store, path := newTestStore(t)
+	if err := store.Save(Settings{DataDir: store.defaults.DataDir}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Language != LanguageAuto {
+		t.Errorf("language = %q, want %q", got.Language, LanguageAuto)
+	}
+
+	if err := os.WriteFile(path, []byte(`{"dataDir":"`+filepath.ToSlash(store.defaults.DataDir)+`"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err = store.Load()
+	if err != nil || got.Language != LanguageAuto {
+		t.Errorf("old file without language: got %+v, %v", got, err)
 	}
 }
 
