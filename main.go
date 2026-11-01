@@ -11,13 +11,18 @@ import (
 var assets embed.FS
 
 func main() {
+	dataDir, err := resolveDataDir()
+	if err != nil {
+		log.Fatalf("cannot prepare the data folder: %v", err)
+	}
+
 	app := application.New(application.Options{
 		Name:        "Pitch",
 		Description: "Offline pitch practice trainer",
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
-		Windows: webviewOptions(),
+		Windows: webviewOptions(dataDir),
 	})
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
