@@ -17,6 +17,7 @@ func main() {
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
+		Windows: webviewOptions(),
 	})
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
