@@ -1,0 +1,28 @@
+# Приватные документы и личные настройки
+docs/private/
+CLAUDE.local.md
+.claude/settings.local.json
+
+# Сборка Wails и Go
+build/bin/
+*.exe
+*.test
+*.out
+
+# Фронтенд
+node_modules/
+frontend/dist/
+frontend/wailsjs/
+
+# Данные пользователя при разработке
+data/
+*.webm
+*.mp4
+*.sqlite
+*.db
+
+# ОС и редакторы
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
