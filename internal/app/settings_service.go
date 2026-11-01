@@ -42,12 +42,12 @@ type SaveResult struct {
 type SettingsService struct {
 	store         *settings.Store
 	activeDataDir string
-	pickFolder    func(startDir string) (string, error)
+	pickFolder    func(startDir, title string) (string, error)
 }
 
 // NewSettingsService creates the service. pickFolder shows a native folder
 // chooser and returns "" if the user cancels.
-func NewSettingsService(store *settings.Store, activeDataDir string, pickFolder func(startDir string) (string, error)) *SettingsService {
+func NewSettingsService(store *settings.Store, activeDataDir string, pickFolder func(startDir, title string) (string, error)) *SettingsService {
 	return &SettingsService{store: store, activeDataDir: activeDataDir, pickFolder: pickFolder}
 }
 
@@ -86,9 +86,10 @@ func (s *SettingsService) Save(dataDir, language string) SaveResult {
 	return SaveResult{OK: true}
 }
 
-// PickDataDir lets the user choose a folder. It returns "" if they cancel.
-func (s *SettingsService) PickDataDir(startDir string) (string, error) {
-	return s.pickFolder(startDir)
+// PickDataDir lets the user choose a folder. The title comes from the frontend
+// so it is translated. It returns "" if they cancel.
+func (s *SettingsService) PickDataDir(startDir, title string) (string, error) {
+	return s.pickFolder(startDir, title)
 }
 
 func errorCode(err error) string {

@@ -13,7 +13,7 @@ func newService(t *testing.T) (*SettingsService, string) {
 	root := t.TempDir()
 	active := filepath.Join(root, "active")
 	store := settings.NewStore(filepath.Join(root, "cfg", "settings.json"), settings.Settings{DataDir: active})
-	pick := func(string) (string, error) { return filepath.Join(root, "picked"), nil }
+	pick := func(string, string) (string, error) { return filepath.Join(root, "picked"), nil }
 	return NewSettingsService(store, active, pick), root
 }
 
@@ -123,15 +123,15 @@ func TestGetWarnsAboutCorruptFile(t *testing.T) {
 
 func TestPickDataDirPassesStartFolder(t *testing.T) {
 	root := t.TempDir()
-	var gotStart string
-	pick := func(start string) (string, error) { gotStart = start; return "", nil }
+	var gotStart, gotTitle string
+	pick := func(start, title string) (string, error) { gotStart, gotTitle = start, title; return "", nil }
 	svc := NewSettingsService(settings.NewStore(filepath.Join(root, "s.json"), settings.Settings{DataDir: root}), root, pick)
 
-	chosen, err := svc.PickDataDir("start-here")
+	chosen, err := svc.PickDataDir("start-here", "Choose a folder")
 	if err != nil || chosen != "" {
 		t.Errorf("got %q, %v; cancelling should return an empty path", chosen, err)
 	}
-	if gotStart != "start-here" {
-		t.Errorf("start folder = %q", gotStart)
+	if gotStart != "start-here" || gotTitle != "Choose a folder" {
+		t.Errorf("start folder = %q, title = %q", gotStart, gotTitle)
 	}
 }

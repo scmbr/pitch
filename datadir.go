@@ -7,20 +7,24 @@ import (
 	"github.com/scmbr/pitch/internal/settings"
 )
 
-// resolveDataDir returns the data folder chosen in the saved settings, created
-// and checked for write access. A changed folder takes effect on the next start
-// because the browser profile and the database are opened from it at startup.
-func resolveDataDir() (string, error) {
+// newSettingsStore opens the settings file in its fixed location.
+func newSettingsStore() (*settings.Store, error) {
 	configPath, err := settings.ConfigPath()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defaultDir, err := settings.DefaultDataDir()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+	return settings.NewStore(configPath, settings.Settings{DataDir: defaultDir}), nil
+}
 
-	current, err := settings.NewStore(configPath, settings.Settings{DataDir: defaultDir}).Load()
+// resolveDataDir returns the data folder chosen in the saved settings, created
+// and checked for write access. A changed folder takes effect on the next start
+// because the browser profile and the database are opened from it at startup.
+func resolveDataDir(store *settings.Store) (string, error) {
+	current, err := store.Load()
 	if errors.Is(err, settings.ErrCorrupt) {
 		log.Printf("settings file is corrupt, using defaults: %v", err)
 	} else if err != nil {
