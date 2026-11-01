@@ -5,6 +5,8 @@ CLAUDE.local.md
 
 # Сборка Wails и Go
 build/bin/
+/bin/
+.task/
 *.exe
 *.test
 *.out
@@ -12,7 +14,7 @@ build/bin/
 # Фронтенд
 node_modules/
 frontend/dist/
-frontend/wailsjs/
+frontend/bindings/
 
 # Данные пользователя при разработке
 data/
