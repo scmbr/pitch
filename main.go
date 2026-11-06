@@ -11,6 +11,7 @@ import (
 	"github.com/scmbr/pitch/internal/attempts"
 	"github.com/scmbr/pitch/internal/projects"
 	"github.com/scmbr/pitch/internal/storage"
+	"github.com/scmbr/pitch/internal/topics"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -46,6 +47,10 @@ func run() error {
 
 	attemptStore := attempts.NewStore(db, dataDir, store)
 	projectStore := projects.NewStore(db, dataDir)
+	topicStore := topics.NewStore(db)
+	if err := topicStore.Seed(); err != nil {
+		return fmt.Errorf("%w: %w", errDatabase, err)
+	}
 	if err := attemptStore.Recover(); err != nil {
 		log.Printf("recovering attempts: %v", err)
 	}
@@ -57,6 +62,7 @@ func run() error {
 			application.NewService(backend.NewRecordingService(dataDir, attemptStore.AddDraft)),
 			application.NewService(backend.NewAttemptService(attemptStore, store)),
 			application.NewService(backend.NewProjectService(projectStore, pickPresentationFile)),
+			application.NewService(backend.NewTopicService(topicStore, pickPresentationFile)),
 		},
 		Assets: application.AssetOptions{
 			Handler: slideHandler(projectStore, mediaHandler(attemptStore, application.AssetFileServerFS(assets))),
