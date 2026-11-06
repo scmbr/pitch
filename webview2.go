@@ -35,6 +35,11 @@ func webviewOptions(dataDir string) application.WindowsOptions {
 		// everything" a single action instead of leaving cache in %APPDATA%.
 		WebviewUserDataPath: filepath.Join(dataDir, "webview"),
 		AdditionalBrowserArgs: []string{
+			// Reject external DNS locally; keep the Wails origin and the
+			// loopback Vite server usable. Direct mode prevents a system
+			// proxy from resolving blocked names on the browser's behalf.
+			"--host-resolver-rules=\"MAP * ^NOTFOUND, EXCLUDE wails.localhost, EXCLUDE localhost, EXCLUDE 127.0.0.1, EXCLUDE ::1\"",
+			"--no-proxy-server",
 			"--disable-background-networking",
 			"--disable-component-update",
 			"--disable-sync",

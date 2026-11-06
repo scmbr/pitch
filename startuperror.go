@@ -59,6 +59,19 @@ func reportStartupError(err error) {
 	if pathErr != nil {
 		settingsPath = "settings.json"
 	}
-	title, body := startupMessage(systemLanguage(), err, settingsPath)
-	showErrorBox(title, body)
+	lang := systemLanguage()
+	if store, err := newSettingsStore(); err == nil {
+		if current, err := store.Load(); err == nil {
+			lang = startupLanguage(current.Language, lang)
+		}
+	}
+	title, body := startupMessage(lang, err, settingsPath)
+	showErrorBox(lang, title, body)
+}
+
+func startupLanguage(preference, system string) string {
+	if preference == settings.LanguageRU || preference == settings.LanguageEN {
+		return preference
+	}
+	return system
 }
