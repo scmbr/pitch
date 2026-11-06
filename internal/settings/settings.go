@@ -37,12 +37,17 @@ const (
 // Settings is everything the user can configure. New fields must keep a
 // usable zero value so that older files still load.
 type Settings struct {
-	DataDir  string `json:"dataDir"`
-	Language string `json:"language"`
+	DataDir        string `json:"dataDir"`
+	Language       string `json:"language"`
+	StorageLimitMB int64  `json:"storageLimitMB"`
+	AutoDelete     bool   `json:"autoDelete"`
 }
 
 // Validate checks the values without touching the disk.
 func (s Settings) Validate() error {
+	if s.StorageLimitMB < 0 || s.StorageLimitMB > 1024*1024 {
+		return errors.New("settings: invalid storage limit")
+	}
 	if s.DataDir == "" {
 		return ErrDataDirEmpty
 	}

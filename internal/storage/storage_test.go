@@ -48,8 +48,8 @@ func TestOpenCreatesSchema(t *testing.T) {
 			t.Errorf("table %s missing", table)
 		}
 	}
-	if v := count(t, db, `SELECT MAX(version) FROM schema_migrations`); v != 1 {
-		t.Errorf("schema version = %d, want 1", v)
+	if v := count(t, db, `SELECT MAX(version) FROM schema_migrations`); v != 2 {
+		t.Errorf("schema version = %d, want 2", v)
 	}
 }
 
@@ -65,8 +65,8 @@ func TestOpenTwiceKeepsDataAndDoesNotReapply(t *testing.T) {
 	if n := count(t, db, `SELECT COUNT(*) FROM projects`); n != 1 {
 		t.Errorf("projects = %d, want 1", n)
 	}
-	if n := count(t, db, `SELECT COUNT(*) FROM schema_migrations`); n != 1 {
-		t.Errorf("migration rows = %d, want 1", n)
+	if n := count(t, db, `SELECT COUNT(*) FROM schema_migrations`); n != 2 {
+		t.Errorf("migration rows = %d, want 2", n)
 	}
 }
 

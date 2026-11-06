@@ -102,7 +102,8 @@ try {
             if ($settings.language -ne 'en' -or $settings.dataDir -ne $changedDir) { throw 'Saved settings differ from the UI result' }
         } else {
             $videos = @(Get-ChildItem -LiteralPath (Join-Path $activeDir 'videos') -Filter '*.webm')
-            if ($videos.Count -ne 1 -or $videos[0].Length -lt 1000) { throw 'Expected one saved nonempty video' }
+            if ($videos.Count -ne $result.expectedVideos) { throw 'Unexpected number of remaining videos' }
+            if (@(Get-ChildItem -LiteralPath (Join-Path $activeDir 'thumbs') -Filter '*.jpg').Count -ne $result.expectedVideos) { throw 'Thumbnail file leaked after deletion' }
             if (@(Get-ChildItem -LiteralPath (Join-Path $activeDir 'videos') -Filter '*.partial').Count -ne 0) { throw 'Partial recording leaked' }
         }
         if (-not (Test-Path -LiteralPath (Join-Path $activeDir 'pitch.sqlite'))) { throw 'Database missing from active data folder' }

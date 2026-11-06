@@ -13,15 +13,16 @@ import (
 // RecordingService accepts ordered, bounded chunks. Only its own active token
 // can write a file; callers never supply filesystem paths.
 type RecordingService struct {
-	mu    sync.Mutex
-	dir   string
-	token string
-	file  *os.File
-	bytes int64
+	mu      sync.Mutex
+	dir     string
+	token   string
+	file    *os.File
+	bytes   int64
+	persist func(string, float64, string) error
 }
 
-func NewRecordingService(dataDir string) *RecordingService {
-	return &RecordingService{dir: filepath.Join(dataDir, "videos")}
+func NewRecordingService(dataDir string, persist func(string, float64, string) error) *RecordingService {
+	return &RecordingService{dir: filepath.Join(dataDir, "videos"), persist: persist}
 }
 
 func (s *RecordingService) Begin() (string, error) {
@@ -66,7 +67,7 @@ func (s *RecordingService) Append(token, encoded string) error {
 
 // Finish publishes only a nonempty, flushed recording. Its identifier can later
 // be attached to an attempt without passing an arbitrary local path over IPC.
-func (s *RecordingService) Finish(token string) (string, error) {
+func (s *RecordingService) Finish(token string, duration float64, thumbnail string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.file == nil || token != s.token {
@@ -85,6 +86,13 @@ func (s *RecordingService) Finish(token string) (string, error) {
 	s.file = nil
 	if err := os.Rename(filepath.Join(s.dir, token+".partial"), filepath.Join(s.dir, token+".webm")); err != nil {
 		return "", err
+	}
+	if s.persist != nil {
+		if err := s.persist(token, duration, thumbnail); err != nil {
+			// The UI will abort the failed draft; preserve its cleanup token.
+			rollback := os.Rename(filepath.Join(s.dir, token+".webm"), filepath.Join(s.dir, token+".partial"))
+			return "", errors.Join(err, rollback)
+		}
 	}
 	s.token = ""
 	return token, nil
