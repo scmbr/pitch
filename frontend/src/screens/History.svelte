@@ -6,6 +6,7 @@
   let { projectID = 0 }: { projectID?: number } = $props();
   let timings = $state<SlideTiming[]>([]);
   import Player from '../components/Player.svelte';
+  import Comparison from '../components/Comparison.svelte';
   import { i18n, type MessageKey } from '../i18n/index.svelte';
   import { formatTime } from '../lib/timer.js';
   const t = i18n.t;
@@ -18,6 +19,12 @@
   let limit = $state(0);
   let autoDelete = $state(false);
   let confirmDelete = $state(false);
+  let firstID = $state(0);
+  let secondID = $state(0);
+  let comparing = $state(false);
+  let firstAttempt = $derived(attempts.find(a => a.id === firstID));
+  let secondAttempt = $derived(attempts.find(a => a.id === secondID));
+  let candidates = $derived(attempts.filter(a => a.id !== firstID && a.projectId === firstAttempt?.projectId && !a.deleting));
 
   async function load() {
     attempts = ((await AttemptService.List()) ?? []).filter(a => !projectID || a.projectId === projectID);
@@ -57,6 +64,9 @@
 
 <main>
   <h1>{t('history.title')}</h1>
+  {#if comparing && firstAttempt && secondAttempt}
+    <Comparison first={firstAttempt} second={secondAttempt} close={() => comparing = false} />
+  {:else}
   <form class="policy" onsubmit={policy}>
     <label>{t('history.limit')} <input type="number" min="0" max="1048576" bind:value={limit} required /></label>
     <label class="check"><input type="checkbox" bind:checked={autoDelete} /> {t('history.autoDelete')}</label>
@@ -64,6 +74,13 @@
     <p>{t('history.limitHint')}</p>
   </form>
   {#if message}<p role={message === 'history.error' ? 'alert' : 'status'}>{t(message)}</p>{/if}
+  {#if attempts.length >= 2}
+    <div class="compare-picker">
+      <label>{t('compare.first')}<select bind:value={firstID} onchange={() => secondID=0}><option value={0}>{t('compare.choose')}</option>{#each attempts.filter(a=>!a.deleting) as a}<option value={a.id}>{a.projectName || a.topic || t('history.free')} · {new Date(a.createdAt).toLocaleString(i18n.language)}</option>{/each}</select></label>
+      <label>{t('compare.second')}<select bind:value={secondID} disabled={!firstAttempt}><option value={0}>{t('compare.choose')}</option>{#each candidates as a}<option value={a.id}>{new Date(a.createdAt).toLocaleString(i18n.language)}</option>{/each}</select></label>
+      <button class="primary" disabled={!firstAttempt || !secondAttempt} onclick={() => { selected=null; comparing=true; }}>{t('compare.title')}</button>
+    </div>
+  {/if}
   <div class="layout">
     <section class="list" aria-label={t('history.title')}>
       {#if !attempts.length}<p>{t('history.empty')}</p>{/if}
@@ -101,11 +118,13 @@
       </section>
     {/if}
   </div>
+  {/if}
 </main>
 
 <style>
   main { max-width: 75rem; margin: auto; padding: 2rem 1.5rem; }
   .policy, .ratings, .actions { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; }
+  .compare-picker { display:flex; gap:1rem; align-items:center; flex-wrap:wrap; margin-bottom:1.5rem; }
   .policy { border-bottom: 1px solid var(--border); padding-bottom: 1rem; margin-bottom: 1.5rem; }
   .policy p { width: 100%; margin: 0; color: var(--muted); font-size: .85rem; }
   label { display: grid; gap: .4rem; margin-bottom: .75rem; }
