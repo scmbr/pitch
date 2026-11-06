@@ -3,7 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": { "node": ">=22.13.0" },
   "scripts": {
+    "predev": "node scripts/copy-pdf-assets.mjs",
+    "prebuild": "node scripts/copy-pdf-assets.mjs",
+    "prebuild:dev": "node scripts/copy-pdf-assets.mjs",
     "dev": "vite",
     "build:dev": "vite build --minify false --mode development",
     "build": "vite build --mode production",
@@ -12,7 +16,8 @@
     "test": "node --test tests/*.test.js"
   },
   "dependencies": {
-    "@wailsio/runtime": "3.1.0"
+    "@wailsio/runtime": "3.1.0",
+    "pdfjs-dist": "6.5.438"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.3.1",

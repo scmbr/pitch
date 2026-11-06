@@ -9,6 +9,7 @@ import (
 
 	backend "github.com/scmbr/pitch/internal/app"
 	"github.com/scmbr/pitch/internal/attempts"
+	"github.com/scmbr/pitch/internal/projects"
 	"github.com/scmbr/pitch/internal/storage"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -44,6 +45,7 @@ func run() error {
 	}()
 
 	attemptStore := attempts.NewStore(db, dataDir, store)
+	projectStore := projects.NewStore(db, dataDir)
 	if err := attemptStore.Recover(); err != nil {
 		log.Printf("recovering attempts: %v", err)
 	}
@@ -52,11 +54,12 @@ func run() error {
 		Description: "Offline pitch practice trainer",
 		Services: []application.Service{
 			application.NewService(backend.NewSettingsService(store, dataDir, pickFolder)),
-			application.NewService(backend.NewRecordingService(dataDir, attemptStore.Add)),
+			application.NewService(backend.NewRecordingService(dataDir, attemptStore.AddDraft)),
 			application.NewService(backend.NewAttemptService(attemptStore, store)),
+			application.NewService(backend.NewProjectService(projectStore, pickPresentationFile)),
 		},
 		Assets: application.AssetOptions{
-			Handler: mediaHandler(attemptStore, application.AssetFileServerFS(assets)),
+			Handler: slideHandler(projectStore, mediaHandler(attemptStore, application.AssetFileServerFS(assets))),
 		},
 		Windows: webviewOptions(dataDir),
 	})
@@ -73,6 +76,11 @@ func run() error {
 	})
 
 	return app.Run()
+}
+
+func pickPresentationFile(title, pattern string) (string, error) {
+	return application.Get().Dialog.OpenFile().CanChooseFiles(true).CanChooseDirectories(false).
+		SetTitle(title).AddFilter(title, pattern).PromptForSingleSelection()
 }
 
 // pickFolder shows the system folder chooser. It returns "" if the user cancels.

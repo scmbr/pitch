@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/base64"
+	"github.com/scmbr/pitch/internal/attempts"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,7 +30,7 @@ func TestRecordingLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := s.Finish(id, 1, ""); err != nil {
+	if _, err := s.Finish(id, attempts.Draft{Duration: 1}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(filepath.Join(dir, "videos", id+".webm"))
@@ -53,7 +54,7 @@ func TestRecordingAbortAndShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Finish(id, 1, ""); err == nil {
+	if _, err := s.Finish(id, attempts.Draft{Duration: 1}); err == nil {
 		t.Fatal("accepted empty recording")
 	}
 	if err := s.Abort(id); err != nil {

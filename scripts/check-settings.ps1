@@ -8,7 +8,7 @@ the native WebView bridge. The normal source and application have no test hook.
 All test data remains under the ignored data/ directory. No debugging port.
 #>
 [CmdletBinding()]
-param([ValidateSet('settings', 'training')][string]$Scenario = 'settings')
+param([ValidateSet('settings', 'training', 'projects')][string]$Scenario = 'settings')
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
@@ -36,6 +36,12 @@ $main = $main.Replace('Name:        "Pitch",', 'Name:        "Pitch",' + "`n" + 
         },
 '@)
 $main = $main.Replace('app.Window.NewWithOptions(', 'window := app.Window.NewWithOptions(')
+if ($Scenario -eq 'projects') {
+    & (Join-Path $PSScriptRoot 'make-presentation-fixture.ps1') -Directory $runRoot
+    $marker = 'backend.NewProjectService(projectStore, pickPresentationFile)'
+    if (-not $main.Contains($marker)) { throw 'Project service overlay marker missing' }
+    $main = $main.Replace($marker, 'backend.NewProjectService(projectStore, func(_ string, pattern string) (string,error) { if pattern == "*.pdf" { return os.Getenv("PITCH_CHECK_PDF"),nil }; return os.Getenv("PITCH_CHECK_PPTX"),nil })')
+}
 $main = $main.Replace('return app.Run()', @'
     window.OnWindowEvent(events.Windows.WebViewNavigationCompleted, func(*application.WindowEvent) {
         script, err := os.ReadFile(os.Getenv("PITCH_CHECK_SCRIPT"))
@@ -49,7 +55,7 @@ $sourcePath = Join-Path $runRoot 'diagnostic-main.txt'
 [System.IO.File]::WriteAllText($sourcePath, $main, $encoding)
 $overlayPath = Join-Path $runRoot 'overlay.json'
 $overlay = @{ Replace = @{ (Join-Path $repo 'main.go') = $sourcePath } } | ConvertTo-Json
-if ($Scenario -eq 'training') {
+if ($Scenario -ne 'settings') {
     $webviewPath = Join-Path $repo 'webview2.go'
     $webview = Get-Content -LiteralPath $webviewPath -Raw -Encoding UTF8
     $marker = 'AdditionalBrowserArgs: []string{'
@@ -71,15 +77,17 @@ $null = New-Item -ItemType Directory -Path (Join-Path $runRoot 'config'), (Join-
 $defaultDir = Join-Path (Join-Path $runRoot 'home') 'Pitch'
 $changedDir = Join-Path $runRoot 'changed-data'
 $savedEnvironment = @{}
-foreach ($key in @('APPDATA', 'USERPROFILE', 'PITCH_CHECK_SCRIPT', 'PITCH_CHECK_NEXT_DIR')) {
+foreach ($key in @('APPDATA', 'USERPROFILE', 'PITCH_CHECK_SCRIPT', 'PITCH_CHECK_NEXT_DIR', 'PITCH_CHECK_PDF', 'PITCH_CHECK_PPTX')) {
     $savedEnvironment[$key] = [Environment]::GetEnvironmentVariable($key)
 }
 $env:APPDATA = Join-Path $runRoot 'config'
 $env:USERPROFILE = Join-Path $runRoot 'home'
 $env:PITCH_CHECK_SCRIPT = Join-Path $PSScriptRoot ('check-' + $Scenario + '.js')
+$env:PITCH_CHECK_PDF = Join-Path $runRoot 'talk.pdf'
+$env:PITCH_CHECK_PPTX = Join-Path $runRoot 'talk.pptx'
 $app = $null
 try {
-    $phases = if ($Scenario -eq 'training') { @('training') } else { @('edit', 'restart') }
+    $phases = if ($Scenario -ne 'settings') { @($Scenario) } else { @('edit', 'restart') }
     foreach ($phase in $phases) {
         if ($phase -eq 'restart') { Start-Sleep -Seconds 2 }
         $activeDir = if ($phase -eq 'restart') { $changedDir } else { $defaultDir }
@@ -103,7 +111,7 @@ try {
         } else {
             $videos = @(Get-ChildItem -LiteralPath (Join-Path $activeDir 'videos') -Filter '*.webm')
             if ($videos.Count -ne $result.expectedVideos) { throw 'Unexpected number of remaining videos' }
-            if (@(Get-ChildItem -LiteralPath (Join-Path $activeDir 'thumbs') -Filter '*.jpg').Count -ne $result.expectedVideos) { throw 'Thumbnail file leaked after deletion' }
+            if (@(Get-ChildItem -LiteralPath (Join-Path $activeDir 'thumbs') -Filter '*.jpg').Count -ne $result.expectedVideos) { throw 'Unexpected thumbnail count' }
             if (@(Get-ChildItem -LiteralPath (Join-Path $activeDir 'videos') -Filter '*.partial').Count -ne 0) { throw 'Partial recording leaked' }
         }
         if (-not (Test-Path -LiteralPath (Join-Path $activeDir 'pitch.sqlite'))) { throw 'Database missing from active data folder' }

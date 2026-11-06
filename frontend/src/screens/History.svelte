@@ -2,6 +2,9 @@
   import { onMount, tick } from 'svelte';
   import { AttemptService } from '../../bindings/github.com/scmbr/pitch/internal/app';
   import type { Attempt } from '../../bindings/github.com/scmbr/pitch/internal/attempts/models';
+  import type { SlideTiming } from '../../bindings/github.com/scmbr/pitch/internal/attempts/models';
+  let { projectID = 0 }: { projectID?: number } = $props();
+  let timings = $state<SlideTiming[]>([]);
   import Player from '../components/Player.svelte';
   import { i18n, type MessageKey } from '../i18n/index.svelte';
   import { formatTime } from '../lib/timer.js';
@@ -17,7 +20,7 @@
   let confirmDelete = $state(false);
 
   async function load() {
-    attempts = (await AttemptService.List()) ?? [];
+    attempts = ((await AttemptService.List()) ?? []).filter(a => !projectID || a.projectId === projectID);
     const policy = await AttemptService.GetPolicy();
     limit = policy.limitMB; autoDelete = policy.autoDelete;
   }
@@ -26,6 +29,8 @@
     selected = a; confirmDelete = false; message = null;
     scores = { structure: a.scores.structure || 3, confidence: a.scores.confidence || 3, timing: a.scores.timing || 3 };
     note = a.note;
+    timings = [];
+    void AttemptService.Timings(a.id).then(items => { if (selected?.id === a.id) timings = items ?? []; }).catch(() => message = 'history.error');
   }
   async function action(task: () => Promise<unknown>) {
     busy = true; message = null;
@@ -65,7 +70,7 @@
       {#each attempts as a (a.id)}
         <button class="attempt" class:active={selected?.id === a.id} onclick={() => choose(a)}>
           {#if a.thumbnail}<img src={'/media/' + a.token + '.jpg'} alt="" loading="lazy" />{/if}
-          <span><strong>{a.topic || t('history.free')}</strong><br />{new Date(a.createdAt).toLocaleString(i18n.language)} · {formatTime(a.duration)}
+          <span><strong>{a.projectName || a.topic || t('history.free')}</strong>{#if a.versionNumber} · {t('projects.versionNumber', { number: String(a.versionNumber) })}{/if}<br />{new Date(a.createdAt).toLocaleString(i18n.language)} · {formatTime(a.duration)}
           {#if a.scores.structure}<br />{t('history.ratings', { structure: String(a.scores.structure), confidence: String(a.scores.confidence), timing: String(a.scores.timing) })}{/if}
           {#if a.deleting}<br />{t('history.deleting')}{/if}</span>
         </button>
@@ -73,7 +78,7 @@
     </section>
     {#if selected}
       <section class="detail" aria-label={t('history.detail')}>
-        {#key selected.id}<Player token={selected.token} duration={selected.duration} />{/key}
+        {#key selected.id}<Player token={selected.token} duration={selected.duration} versionID={selected.versionId} {timings} />{/key}
         <form onsubmit={event => { event.preventDefault(); void save(); }}>
           <div class="ratings">
             {#each ['structure', 'confidence', 'timing'] as key}

@@ -3,6 +3,12 @@
   import { i18n, type MessageKey } from '../i18n/index.svelte';
   import { TrainingTimer, formatTime } from '../lib/timer.js';
   import { Recorder } from '../lib/recorder';
+  import type { Version } from '../../bindings/github.com/scmbr/pitch/internal/projects/models';
+  import type { SlideTiming } from '../../bindings/github.com/scmbr/pitch/internal/attempts/models';
+  let { projectVersion = null, projectName = '', clearProject = () => {} }: { projectVersion?: Version | null; projectName?: string; clearProject?: () => void } = $props();
+  let slide = $state(0);
+  let timings: SlideTiming[] = [];
+  let slideStart = 0;
 
   const t = i18n.t;
   const timer = new TrainingTimer();
@@ -10,6 +16,7 @@
   let speech = $state(120);
   let phase = $state('idle');
   let remaining = $state(30);
+  let displayedTime = $derived(phase === 'idle' ? (preparation || speech) : remaining);
   let paused = $state(false);
   let busy = $state(false);
   let message = $state<MessageKey | null>(null);
@@ -30,11 +37,27 @@
   let ready = $state(false);
   async function beginSpeech() {
     started = true;
+    timings = []; slideStart = 0;
     try {
       await recorder?.start();
       ready = true;
       if (timer.paused) recorder?.pause(true);
     } catch { if (!disposed) await fail('training.diskError'); }
+  }
+  function changeSlide(next: number) {
+    if (!projectVersion || next < 0 || next >= projectVersion.slideCount || next === slide || busy) return;
+    timer.tick(performance.now());
+    if (phase === 'speech' && timer.elapsed > slideStart) {
+      timings.push({ slideIndex: slide, start: slideStart, end: timer.elapsed });
+      slideStart = timer.elapsed;
+    }
+    slide = next;
+  }
+  function keys(event: KeyboardEvent) {
+    if (event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable]')) return;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+      event.preventDefault(); changeSlide(slide + (event.key === 'ArrowRight' ? 1 : -1));
+    }
   }
 
   async function start() {
@@ -77,6 +100,7 @@
     busy = true;
     clearInterval(interval);
     timer.finish(performance.now());
+    if (projectVersion && timer.elapsed > slideStart) timings.push({ slideIndex: slide, start: slideStart, end: timer.elapsed });
     phase = 'finished';
     try {
       let thumbnail = '';
@@ -86,7 +110,7 @@
         canvas.getContext('2d')?.drawImage(video, 0, 0, 320, 180);
         thumbnail = canvas.toDataURL('image/jpeg', .75).split(',')[1];
       }
-      saved = await recorder!.finish(timer.elapsed, thumbnail);
+      saved = await recorder!.finish({ duration: timer.elapsed, thumbnail, projectId: projectVersion?.projectId ?? 0, versionId: projectVersion?.id ?? 0, topic: '', timings: projectVersion ? timings : [] });
       recorder = null;
       message = 'training.saved';
     } catch (error) { await fail(String(error).includes('storageLimit') ? 'history.limitError' : 'training.diskError'); }
@@ -107,8 +131,20 @@
   });
 </script>
 
+<svelte:window onkeydown={keys} />
+
 <main>
   <h1>{t('training.title')}</h1>
+  {#if projectVersion}
+    <p>{projectName} · {t('projects.versionNumber', { number: String(projectVersion.number) })}</p>
+    {#if phase === 'idle' || phase === 'finished'}<button onclick={clearProject}>{t('history.free')}</button>{/if}
+    <img class="slide" src={`/slides/${projectVersion.id}/${slide + 1}.png`} alt={t('projects.slide', { page: String(slide + 1), count: String(projectVersion.slideCount) })} />
+    <div class="actions">
+      <button onclick={() => changeSlide(slide - 1)} disabled={slide === 0 || busy}>{t('projects.previous')}</button>
+      <span>{slide + 1} / {projectVersion.slideCount}</span>
+      <button onclick={() => changeSlide(slide + 1)} disabled={slide + 1 >= projectVersion.slideCount || busy}>{t('projects.next')}</button>
+    </div>
+  {/if}
   <div class="durations">
     <label>{t('training.preparation')} <input type="number" min="0" max="3600" bind:value={preparation} disabled={phase !== 'idle' && phase !== 'finished'} /></label>
     <label>{t('training.speech')} <input type="number" min="1" max="86400" bind:value={speech} disabled={phase !== 'idle' && phase !== 'finished'} /></label>
@@ -116,8 +152,8 @@
   <div class="stage">
     <video bind:this={video} autoplay muted playsinline aria-label={t('training.preview')}></video>
     <div class="clock">
-      <p>{t(phase === 'preparation' ? 'training.preparing' : 'training.speaking')}</p>
-      <output class:warning={remaining <= 15} class:overtime={remaining < 0}>{formatTime(remaining)}</output>
+      <p>{t(phase === 'idle' ? 'training.ready' : phase === 'preparation' ? 'training.preparing' : 'training.speaking')}</p>
+      <output class:warning={displayedTime <= 15} class:overtime={displayedTime < 0}>{formatTime(displayedTime)}</output>
       {#if phase === 'speech'}<p class="recording" role="status">● {t(paused ? 'training.paused' : 'training.recording')}</p>{/if}
     </div>
   </div>
@@ -150,5 +186,6 @@
   .warning, .recording { color: var(--danger); }
   .overtime { text-decoration: underline; }
   .saved { overflow-wrap: anywhere; color: var(--muted); }
+  .slide { display: block; width: 100%; max-height: 45vh; object-fit: contain; background: white; }
   @media(max-width: 650px) { .stage { grid-template-columns: 1fr; } }
 </style>
