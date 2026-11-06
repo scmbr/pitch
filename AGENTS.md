@@ -34,10 +34,13 @@
 После первоначальной настройки проекта проверь команды и обнови этот раздел.
 
 ```bash
-wails dev
-wails build
+wails3 dev
+wails3 build
 go test ./...
 golangci-lint run
+cd frontend
+npm run check
+npm run build
 ```
 
 Не утверждай, что тесты или сборка прошли успешно, если соответствующие команды не выполнялись.
