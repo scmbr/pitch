@@ -1,0 +1,51 @@
+(async () => {
+  if (window.__pitchCheckRunning) return;
+  window.__pitchCheckRunning = true;
+  const result = { passed: false, checks: [], expectedVideos: 1 };
+  const delay = ms => new Promise(r => setTimeout(r, ms));
+  const assert = (ok, message) => { if (!ok) throw Error(message); };
+  const wait = async fn => { for (let i=0;i<300;i++) { if (fn()) return; await delay(100); } throw Error('Timed out: '+fn.toString()); };
+  const click = text => { const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text); assert(b&&!b.disabled,'Missing enabled '+text); b.click(); };
+  const input = (field,value,event='input') => { field.value=value; field.dispatchEvent(new Event(event,{bubbles:true})); };
+  try {
+    await wait(()=>document.querySelector('#language'));
+    input(document.querySelector('#language'),'en','change'); document.querySelector('form').requestSubmit();
+    await wait(()=>document.documentElement.lang==='en');
+    click('Presentations'); await wait(()=>document.querySelector('h1')?.textContent==='Presentations');
+    click('Import presentation');
+    await wait(()=>[...document.querySelectorAll('button')].some(b=>b.textContent==='Attach PDF'&&!b.disabled));
+    result.checks.push('PowerPoint project/version created; missing converter offers PDF');
+    click('Attach PDF');
+    await wait(()=>document.querySelector('.slide')?.naturalWidth>0 && [...document.querySelectorAll('button')].some(b=>b.textContent==='Practice this version'&&!b.disabled));
+    assert(document.querySelector('.slide').alt==='Slide 1 of 2','PDF page count');
+    click('Next slide'); await wait(()=>document.querySelector('.slide')?.alt==='Slide 2 of 2');
+    result.checks.push('bundled PDF.js renders two pages and caches local PNGs');
+    click('Practice this version'); await wait(()=>document.querySelector('input[type=number]'));
+    const fields=document.querySelectorAll('input[type=number]'); input(fields[0],0); input(fields[1],5);
+    click('Start training'); await wait(()=>document.querySelector('.recording')?.textContent.includes('Recording'));
+    await delay(1000);
+    document.body.focus(); window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+    await wait(()=>document.querySelector('.slide')?.alt==='Slide 2 of 2');
+    await delay(1000); click('Finish and save'); await wait(()=>document.querySelector('.saved'));
+    click('History'); await wait(()=>document.querySelector('.attempt')); document.querySelector('.attempt').click();
+    await wait(()=>document.querySelectorAll('.timeline button').length===2);
+    await wait(()=>document.querySelector('.detail video')?.readyState>=2);
+    const timeline=[...document.querySelectorAll('.timeline button')].map(b=>b.textContent);
+    assert(timeline[0].includes('Slide 1')&&timeline[1].includes('Slide 2'),'Slide sequence not persisted');
+    document.querySelectorAll('.timeline button')[1].click();
+    await wait(()=>document.querySelector('.detail .slide')?.alt==='Slide 2');
+    assert(document.querySelector('.attempt').textContent.includes('Version 1'),'Attempt version missing');
+    result.checks.push('presentation practice, arrow navigation, version link and persisted slide timeline with seek');
+    click('Presentations'); await wait(()=>document.querySelector('.project')); document.querySelector('.project').click();
+    await wait(()=>document.querySelector('.slide')?.naturalWidth>0 && [...document.querySelectorAll('button')].some(b=>b.textContent==='Practice this version'&&!b.disabled));
+    assert(!document.querySelector('[role=alert]'),'Cached version failed to reopen');
+    result.checks.push('same source reuses version and cached slides');
+    result.passed=true;
+  } catch(error) {
+    result.error=String(error.stack||error);
+    const v=document.querySelector('.detail video');
+    if(v) result.player={time:v.currentTime,duration:v.duration,readyState:v.readyState,error:v.error?.message,slide:document.querySelector('.detail .slide')?.alt};
+  }
+  result.renderedText=document.body.innerText;
+  window.chrome.webview.postMessage('pitch-stage-one:'+JSON.stringify(result));
+})();

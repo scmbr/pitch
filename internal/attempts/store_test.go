@@ -182,3 +182,47 @@ func TestInterruptedDeletionAndOrphanRecovery(t *testing.T) {
 		t.Fatal("accepted arbitrary path")
 	}
 }
+
+func TestPresentationAttemptPersistsValidatedTimeline(t *testing.T) {
+	s := fixture(t)
+	for _, sql := range []string{
+		"INSERT INTO projects(id,name,type,created_at) VALUES(10,'Talk','pptx','now')",
+		"INSERT INTO project_versions(id,project_id,file_hash,version_number,created_at,slide_count) VALUES(20,10,'hash',2,'now',2)",
+	} {
+		if _, e := s.db.Exec(sql); e != nil {
+			t.Fatal(e)
+		}
+	}
+	token := strings.Repeat("d", 32)
+	video(t, s, token, 10)
+	draft := Draft{Duration: 5, ProjectID: 10, VersionID: 20, Timings: []SlideTiming{{0, 0, 2}, {1, 2, 5}}}
+	if e := s.AddDraft(token, draft); e != nil {
+		t.Fatal(e)
+	}
+	a := list(t, s)[0]
+	if a.VersionID != 20 || a.ProjectName != "Talk" || a.VersionNumber != 2 {
+		t.Fatalf("version: %+v", a)
+	}
+	timings, e := s.Timings(a.ID)
+	if e != nil || len(timings) != 2 || timings[1].Start != 2 {
+		t.Fatalf("timeline: %+v %v", timings, e)
+	}
+	if e := s.Delete(a.ID); e != nil {
+		t.Fatal(e)
+	}
+	timings, e = s.Timings(a.ID)
+	if e != nil || len(timings) != 0 {
+		t.Fatal("timeline survived deletion")
+	}
+	for _, invalid := range []Draft{
+		{Duration: 5, ProjectID: 11, VersionID: 20},
+		{Duration: 5, ProjectID: 10, VersionID: 20, Timings: []SlideTiming{{2, 0, 5}}},
+		{Duration: 5, ProjectID: 10, VersionID: 20, Timings: []SlideTiming{{0, 0, 4}, {1, 2, 5}}},
+		{Duration: 5, ProjectID: 10, VersionID: 20, Timings: []SlideTiming{{0, 0, 6}}},
+	} {
+		video(t, s, token, 10)
+		if e := s.AddDraft(token, invalid); e == nil {
+			t.Fatalf("accepted invalid draft: %+v", invalid)
+		}
+	}
+}

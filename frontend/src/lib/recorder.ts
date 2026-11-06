@@ -1,4 +1,5 @@
 import { RecordingService } from '../../bindings/github.com/scmbr/pitch/internal/app';
+import type { Draft } from '../../bindings/github.com/scmbr/pitch/internal/attempts/models';
 
 // Uploads are ordered and bounded. A slow/full disk ends capture instead of
 // keeping an ever-growing backlog of unencoded recordings in memory.
@@ -71,10 +72,10 @@ export class Recorder {
     await this.uploads;
   }
 
-  async finish(duration: number, thumbnail: string) {
+  async finish(draft: Draft) {
     await this.stop();
     if (this.failure) { await this.abort(); throw this.failure; }
-    const id = await RecordingService.Finish(this.token, duration, thumbnail);
+    const id = await RecordingService.Finish(this.token, draft);
     this.token = '';
     return id;
   }

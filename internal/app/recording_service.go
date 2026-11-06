@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"github.com/scmbr/pitch/internal/attempts"
 	"os"
 	"path/filepath"
 	"sync"
@@ -18,10 +19,10 @@ type RecordingService struct {
 	token   string
 	file    *os.File
 	bytes   int64
-	persist func(string, float64, string) error
+	persist func(string, attempts.Draft) error
 }
 
-func NewRecordingService(dataDir string, persist func(string, float64, string) error) *RecordingService {
+func NewRecordingService(dataDir string, persist func(string, attempts.Draft) error) *RecordingService {
 	return &RecordingService{dir: filepath.Join(dataDir, "videos"), persist: persist}
 }
 
@@ -67,7 +68,7 @@ func (s *RecordingService) Append(token, encoded string) error {
 
 // Finish publishes only a nonempty, flushed recording. Its identifier can later
 // be attached to an attempt without passing an arbitrary local path over IPC.
-func (s *RecordingService) Finish(token string, duration float64, thumbnail string) (string, error) {
+func (s *RecordingService) Finish(token string, draft attempts.Draft) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.file == nil || token != s.token {
@@ -88,7 +89,7 @@ func (s *RecordingService) Finish(token string, duration float64, thumbnail stri
 		return "", err
 	}
 	if s.persist != nil {
-		if err := s.persist(token, duration, thumbnail); err != nil {
+		if err := s.persist(token, draft); err != nil {
 			// The UI will abort the failed draft; preserve its cleanup token.
 			rollback := os.Rename(filepath.Join(s.dir, token+".webm"), filepath.Join(s.dir, token+".partial"))
 			return "", errors.Join(err, rollback)

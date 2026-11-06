@@ -15,6 +15,9 @@ func NewAttemptService(store *attempts.Store, preferences *settings.Store) *Atte
 }
 
 func (s *AttemptService) List() ([]attempts.Attempt, error) { return s.store.List() }
+func (s *AttemptService) Timings(id int64) ([]attempts.SlideTiming, error) {
+	return s.store.Timings(id)
+}
 func (s *AttemptService) Update(id int64, scores attempts.Scores, note string) error {
 	return s.store.Update(id, scores, note)
 }

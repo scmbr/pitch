@@ -15,6 +15,7 @@ build/bin/
 node_modules/
 frontend/dist/
 frontend/bindings/
+frontend/public/pdfjs/
 
 # Данные пользователя при разработке
 data/

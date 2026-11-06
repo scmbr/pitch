@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"image/jpeg"
-	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -26,17 +25,19 @@ type Scores struct {
 }
 
 type Attempt struct {
-	ID        int64   `json:"id"`
-	ProjectID int64   `json:"projectId"`
-	VersionID int64   `json:"versionId"`
-	Token     string  `json:"token"`
-	Duration  float64 `json:"duration"`
-	Topic     string  `json:"topic"`
-	Scores    Scores  `json:"scores"`
-	Note      string  `json:"note"`
-	CreatedAt string  `json:"createdAt"`
-	Thumbnail bool    `json:"thumbnail"`
-	Deleting  bool    `json:"deleting"`
+	ID            int64   `json:"id"`
+	ProjectID     int64   `json:"projectId"`
+	VersionID     int64   `json:"versionId"`
+	Token         string  `json:"token"`
+	Duration      float64 `json:"duration"`
+	Topic         string  `json:"topic"`
+	Scores        Scores  `json:"scores"`
+	Note          string  `json:"note"`
+	CreatedAt     string  `json:"createdAt"`
+	Thumbnail     bool    `json:"thumbnail"`
+	Deleting      bool    `json:"deleting"`
+	ProjectName   string  `json:"projectName"`
+	VersionNumber int     `json:"versionNumber"`
 }
 
 type Store struct {
@@ -67,10 +68,29 @@ func (s *Store) MediaPath(token string, thumbnail bool) (string, error) {
 }
 
 func (s *Store) Add(token string, duration float64, thumbnail string) error {
+	return s.AddDraft(token, Draft{Duration: duration, Thumbnail: thumbnail})
+}
+
+func (s *Store) AddDraft(token string, draft Draft) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if math.IsNaN(duration) || math.IsInf(duration, 0) || duration < 0 {
-		return errors.New("invalidDuration")
+	if err := draft.validate(); err != nil {
+		return err
+	}
+	thumbnail := draft.Thumbnail
+	if draft.ProjectID != 0 {
+		var count int
+		if err := s.db.QueryRow("SELECT slide_count FROM project_versions WHERE id=? AND project_id=?", draft.VersionID, draft.ProjectID).Scan(&count); err != nil {
+			return err
+		}
+		if count < 1 {
+			return errors.New("slidesNotReady")
+		}
+		for _, timing := range draft.Timings {
+			if timing.SlideIndex >= count {
+				return errors.New("invalidSlide")
+			}
+		}
 	}
 	path, err := s.MediaPath(token, false)
 	if err != nil {
@@ -115,7 +135,7 @@ func (s *Store) Add(token string, duration float64, thumbnail string) error {
 			return err
 		}
 	}
-	if err := s.insert(token, duration, thumb != ""); err != nil {
+	if err := s.insertDraft(token, draft, thumb != ""); err != nil {
 		if thumb != "" {
 			_ = os.Remove(thumb)
 		}
@@ -125,19 +145,37 @@ func (s *Store) Add(token string, duration float64, thumbnail string) error {
 }
 
 func (s *Store) insert(token string, duration float64, thumbnail bool) error {
+	return s.insertDraft(token, Draft{Duration: duration}, thumbnail)
+}
+func (s *Store) insertDraft(token string, draft Draft, thumbnail bool) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var projectID int64
-	err = tx.QueryRow("SELECT id FROM projects WHERE type = 'free' ORDER BY id LIMIT 1").Scan(&projectID)
-	if errors.Is(err, sql.ErrNoRows) {
-		r, e := tx.Exec("INSERT INTO projects(name,type,created_at) VALUES('free','free',?)", time.Now().UTC().Format(time.RFC3339Nano))
-		if e != nil {
-			return e
+	projectID := draft.ProjectID
+	var versionID any
+	if projectID == 0 {
+		err = tx.QueryRow("SELECT id FROM projects WHERE type = 'free' ORDER BY id LIMIT 1").Scan(&projectID)
+		if errors.Is(err, sql.ErrNoRows) {
+			r, e := tx.Exec("INSERT INTO projects(name,type,created_at) VALUES('free','free',?)", time.Now().UTC().Format(time.RFC3339Nano))
+			if e != nil {
+				return e
+			}
+			projectID, err = r.LastInsertId()
 		}
-		projectID, err = r.LastInsertId()
+	} else {
+		var count int
+		err = tx.QueryRow("SELECT slide_count FROM project_versions WHERE id=? AND project_id=?", draft.VersionID, projectID).Scan(&count)
+		if err == nil && count < 1 {
+			return errors.New("slidesNotReady")
+		}
+		for _, timing := range draft.Timings {
+			if timing.SlideIndex >= count {
+				return errors.New("invalidSlide")
+			}
+		}
+		versionID = draft.VersionID
 	}
 	if err != nil {
 		return err
@@ -146,9 +184,18 @@ func (s *Store) insert(token string, duration float64, thumbnail bool) error {
 	if thumbnail {
 		thumb = token + ".jpg"
 	}
-	_, err = tx.Exec("INSERT INTO attempts(project_id,video_path,thumb_path,duration_sec,topic,scores,note,created_at) VALUES(?,?,?,?,?,?,?,?)", projectID, token+".webm", thumb, duration, "", "{}", "", time.Now().UTC().Format(time.RFC3339Nano))
+	result, err := tx.Exec("INSERT INTO attempts(project_id,version_id,video_path,thumb_path,duration_sec,topic,scores,note,created_at) VALUES(?,?,?,?,?,?,?,?,?)", projectID, versionID, token+".webm", thumb, draft.Duration, draft.Topic, "{}", "", time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return err
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return err
+	}
+	for _, timing := range draft.Timings {
+		if _, err := tx.Exec("INSERT INTO slide_timings(attempt_id,slide_index,start_sec,end_sec) VALUES(?,?,?,?)", id, timing.SlideIndex, timing.Start, timing.End); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -160,7 +207,7 @@ func (s *Store) List() ([]Attempt, error) {
 }
 
 func (s *Store) list() ([]Attempt, error) {
-	rows, err := s.db.Query("SELECT id,project_id,COALESCE(version_id,0),video_path,duration_sec,COALESCE(topic,''),COALESCE(scores,'{}'),COALESCE(note,''),created_at,COALESCE(thumb_path,''),deleting FROM attempts ORDER BY created_at DESC,id DESC")
+	rows, err := s.db.Query("SELECT a.id,a.project_id,COALESCE(a.version_id,0),a.video_path,a.duration_sec,COALESCE(a.topic,''),COALESCE(a.scores,'{}'),COALESCE(a.note,''),a.created_at,COALESCE(a.thumb_path,''),a.deleting,CASE WHEN p.type='pptx' THEN p.name ELSE '' END,COALESCE(v.version_number,0) FROM attempts a JOIN projects p ON p.id=a.project_id LEFT JOIN project_versions v ON v.id=a.version_id ORDER BY a.created_at DESC,a.id DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +216,7 @@ func (s *Store) list() ([]Attempt, error) {
 	for rows.Next() {
 		var a Attempt
 		var name, score, thumb string
-		if err := rows.Scan(&a.ID, &a.ProjectID, &a.VersionID, &name, &a.Duration, &a.Topic, &score, &a.Note, &a.CreatedAt, &thumb, &a.Deleting); err != nil {
+		if err := rows.Scan(&a.ID, &a.ProjectID, &a.VersionID, &name, &a.Duration, &a.Topic, &score, &a.Note, &a.CreatedAt, &thumb, &a.Deleting, &a.ProjectName, &a.VersionNumber); err != nil {
 			return nil, err
 		}
 		a.Token = name[:len(name)-len(filepath.Ext(name))]
