@@ -8,7 +8,7 @@ the native WebView bridge. The normal source and application have no test hook.
 All test data remains under the ignored data/ directory. No debugging port.
 #>
 [CmdletBinding()]
-param()
+param([ValidateSet('settings', 'training')][string]$Scenario = 'settings')
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
@@ -49,6 +49,16 @@ $sourcePath = Join-Path $runRoot 'diagnostic-main.txt'
 [System.IO.File]::WriteAllText($sourcePath, $main, $encoding)
 $overlayPath = Join-Path $runRoot 'overlay.json'
 $overlay = @{ Replace = @{ (Join-Path $repo 'main.go') = $sourcePath } } | ConvertTo-Json
+if ($Scenario -eq 'training') {
+    $webviewPath = Join-Path $repo 'webview2.go'
+    $webview = Get-Content -LiteralPath $webviewPath -Raw -Encoding UTF8
+    $marker = 'AdditionalBrowserArgs: []string{'
+    if (-not $webview.Contains($marker)) { throw 'WebView overlay marker missing' }
+    $webview = $webview.Replace($marker, $marker + '"--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream",')
+    $webviewSource = Join-Path $runRoot 'diagnostic-webview.txt'
+    [System.IO.File]::WriteAllText($webviewSource, $webview, $encoding)
+    $overlay = @{ Replace = @{ (Join-Path $repo 'main.go') = $sourcePath; $webviewPath = $webviewSource } } | ConvertTo-Json
+}
 [System.IO.File]::WriteAllText($overlayPath, $overlay, $encoding)
 $binary = Join-Path $runRoot 'pitch.exe'
 Push-Location $repo
@@ -66,12 +76,13 @@ foreach ($key in @('APPDATA', 'USERPROFILE', 'PITCH_CHECK_SCRIPT', 'PITCH_CHECK_
 }
 $env:APPDATA = Join-Path $runRoot 'config'
 $env:USERPROFILE = Join-Path $runRoot 'home'
-$env:PITCH_CHECK_SCRIPT = Join-Path $PSScriptRoot 'check-settings.js'
+$env:PITCH_CHECK_SCRIPT = Join-Path $PSScriptRoot ('check-' + $Scenario + '.js')
 $app = $null
 try {
-    foreach ($phase in @('edit', 'restart')) {
+    $phases = if ($Scenario -eq 'training') { @('training') } else { @('edit', 'restart') }
+    foreach ($phase in $phases) {
         if ($phase -eq 'restart') { Start-Sleep -Seconds 2 }
-        $activeDir = if ($phase -eq 'edit') { $defaultDir } else { $changedDir }
+        $activeDir = if ($phase -eq 'restart') { $changedDir } else { $defaultDir }
         $env:PITCH_CHECK_NEXT_DIR = if ($phase -eq 'edit') { $changedDir } else { '' }
         $app = Start-Process -FilePath $binary -WindowStyle Hidden -PassThru
         $null = $app.Handle
@@ -85,9 +96,15 @@ try {
         if (-not $result.passed) { throw $result.error }
         if (-not $app.WaitForExit(10000)) { throw 'Diagnostic application did not close' }
         if ($app.ExitCode -ne 0) { throw "Diagnostic application exited with $($app.ExitCode)" }
-        $settingsPath = Join-Path (Join-Path $runRoot 'config') 'Pitch/settings.json'
-        $settings = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ($settings.language -ne 'en' -or $settings.dataDir -ne $changedDir) { throw 'Saved settings differ from the UI result' }
+        if ($Scenario -eq 'settings') {
+            $settingsPath = Join-Path (Join-Path $runRoot 'config') 'Pitch/settings.json'
+            $settings = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($settings.language -ne 'en' -or $settings.dataDir -ne $changedDir) { throw 'Saved settings differ from the UI result' }
+        } else {
+            $videos = @(Get-ChildItem -LiteralPath (Join-Path $activeDir 'videos') -Filter '*.webm')
+            if ($videos.Count -ne 1 -or $videos[0].Length -lt 1000) { throw 'Expected one saved nonempty video' }
+            if (@(Get-ChildItem -LiteralPath (Join-Path $activeDir 'videos') -Filter '*.partial').Count -ne 0) { throw 'Partial recording leaked' }
+        }
         if (-not (Test-Path -LiteralPath (Join-Path $activeDir 'pitch.sqlite'))) { throw 'Database missing from active data folder' }
         Write-Output ("Settings UI {0}: passed" -f $phase)
     }
