@@ -1,7 +1,7 @@
 (async () => {
   if (window.__pitchCheckRunning) return;
   window.__pitchCheckRunning = true;
-  const result = { passed: false, checks: [], expectedVideos: 1 };
+  const result = { passed: false, checks: [], expectedVideos: 2 };
   const delay = ms => new Promise(r => setTimeout(r, ms));
   const assert = (ok, message) => { if (!ok) throw Error(message); };
   const wait = async fn => { for (let i=0;i<300;i++) { if (fn()) return; await delay(100); } throw Error('Timed out: '+fn.toString()); };
@@ -40,6 +40,39 @@
     await wait(()=>document.querySelector('.slide')?.naturalWidth>0 && [...document.querySelectorAll('button')].some(b=>b.textContent==='Practice this version'&&!b.disabled));
     assert(!document.querySelector('[role=alert]'),'Cached version failed to reopen');
     result.checks.push('same source reuses version and cached slides');
+    click('Practice this version'); await wait(()=>document.querySelector('input[type=number]'));
+    input(document.querySelectorAll('input[type=number]')[0],0);
+    click('Start training'); await wait(()=>document.querySelector('.recording')?.textContent.includes('Recording'));
+    await delay(800); click('Next slide'); await delay(800); click('Previous slide'); await delay(1400);
+    click('Finish and save'); await wait(()=>document.querySelector('.saved'));
+    click('History'); await wait(()=>document.querySelectorAll('.attempt').length===2);
+    const pickers=document.querySelectorAll('.compare-picker select');
+    input(pickers[0],pickers[0].options[1].value,'change');
+    await wait(()=>pickers[1].options.length===2); input(pickers[1],pickers[1].options[1].value,'change');
+    await wait(()=>[...document.querySelectorAll('button')].some(b=>b.textContent==='Compare attempts'&&!b.disabled));
+    click('Compare attempts');
+    await wait(()=>document.querySelectorAll('.comparison video').length===2 && [...document.querySelectorAll('.comparison video')].every(v=>v.readyState>=2));
+    const videos=[...document.querySelectorAll('.comparison video')];
+    const controls=document.querySelectorAll('.comparison .controls select'); input(controls[1],'none','change');
+    await wait(()=>[...document.querySelectorAll('button')].some(b=>b.textContent==='Play both'&&!b.disabled));
+    click('Play both'); await wait(()=>videos.every(v=>v.currentTime>.1&&!v.paused));
+    click('Pause'); await wait(()=>videos.every(v=>v.paused));
+    assert(Math.abs(videos[0].currentTime-videos[1].currentTime)<.2,'Comparison playback drifted');
+    input(document.querySelector('.comparison input[type=range]'),'.5');
+    await wait(()=>videos.every(v=>Math.abs(v.currentTime-.5)<.2));
+    input(controls[0],'2','change'); assert(videos.every(v=>v.playbackRate===2),'Shared speed not applied');
+    assert(document.querySelectorAll('.comparison tbody tr').length===2,'Per-slide comparison table missing');
+    click('Play both'); await wait(()=>videos.every(v=>v.ended));
+    await wait(()=>[...document.querySelectorAll('button')].some(b=>b.textContent==='Play both'));
+    result.checks.push('two videos share play/pause, seek, speed and finish with different durations; slide totals table');
+    click('Play both'); await wait(()=>videos.every(v=>v.currentTime>.1&&!v.paused));
+    input(document.querySelector('.comparison input[type=range]'),'.5');
+    await wait(()=>videos.every(v=>!v.paused&&v.currentTime>.5));
+    click('Pause'); await wait(()=>videos.every(v=>v.paused));
+    result.checks.push('finished comparison restarts and seeks during playback');
+    click('Back to history'); await wait(()=>!document.querySelector('.comparison'));
+    assert(videos.every(v=>v.paused&&!v.getAttribute('src')),'Comparison media not released');
+    result.checks.push('comparison exit releases both media elements');
     result.passed=true;
   } catch(error) {
     result.error=String(error.stack||error);
