@@ -23,6 +23,6 @@ func systemLanguage() string {
 }
 
 // showErrorBox opens a native message box; it works before any window exists.
-func showErrorBox(title, body string) {
+func showErrorBox(_ string, title, body string) {
 	w32.MessageBox(0, body, title, w32.MB_OK|w32.MB_ICONERROR)
 }

@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/scmbr/pitch/internal/settings"
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 func systemLanguage() string {
@@ -17,7 +19,23 @@ func systemLanguage() string {
 	return settings.LanguageEN
 }
 
-// showErrorBox has no native fallback outside Windows yet, so the error only reaches the log.
-func showErrorBox(title, body string) {
-	log.Printf("%s: %s", title, body)
+// The native dialog needs a running platform event loop. No WebView, settings
+// store or database is created, since one of those may have caused the failure.
+func showErrorBox(lang, title, body string) {
+	app := application.New(application.Options{Name: "Pitch"})
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		dialog := app.Dialog.Error().SetTitle(title).SetMessage(body)
+		dialog.AddButton(startupCloseLabel(lang)).SetAsDefault().SetAsCancel().OnClick(app.Quit)
+		dialog.Show()
+	})
+	if err := app.Run(); err != nil {
+		log.Printf("show startup error: %v; %s: %s", err, title, body)
+	}
+}
+
+func startupCloseLabel(lang string) string {
+	if lang == settings.LanguageRU {
+		return "Закрыть"
+	}
+	return "Close"
 }

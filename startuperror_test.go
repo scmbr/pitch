@@ -10,6 +10,20 @@ import (
 	"github.com/scmbr/pitch/internal/storage"
 )
 
+func TestStartupLanguage(t *testing.T) {
+	for _, test := range []struct{ preference, system, want string }{
+		{settings.LanguageRU, settings.LanguageEN, settings.LanguageRU},
+		{settings.LanguageEN, settings.LanguageRU, settings.LanguageEN},
+		{settings.LanguageAuto, settings.LanguageRU, settings.LanguageRU},
+		{"", settings.LanguageEN, settings.LanguageEN},
+		{"unknown", settings.LanguageRU, settings.LanguageRU},
+	} {
+		if got := startupLanguage(test.preference, test.system); got != test.want {
+			t.Errorf("startupLanguage(%q, %q) = %q, want %q", test.preference, test.system, got, test.want)
+		}
+	}
+}
+
 func TestStartupMessage(t *testing.T) {
 	const settingsPath = `C:\cfg\settings.json`
 	cause := errors.New("disk offline")
