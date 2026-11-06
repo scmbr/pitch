@@ -184,6 +184,32 @@ func TestPrepareDataDir(t *testing.T) {
 		}
 	})
 
+	t.Run("preserves existing files", func(t *testing.T) {
+		dir := t.TempDir()
+		existing := filepath.Join(dir, probeName)
+		const content = "keep this file"
+		if err := os.WriteFile(existing, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := PrepareDataDir(dir); err != nil {
+			t.Fatalf("PrepareDataDir: %v", err)
+		}
+		got, err := os.ReadFile(existing)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != content {
+			t.Errorf("existing file = %q, want %q", got, content)
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 1 || entries[0].Name() != probeName {
+			t.Errorf("unexpected directory contents: %v", entries)
+		}
+	})
+
 	t.Run("rejects a path blocked by a file", func(t *testing.T) {
 		blocker := filepath.Join(t.TempDir(), "file")
 		if err := os.WriteFile(blocker, nil, 0o600); err != nil {

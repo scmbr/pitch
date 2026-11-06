@@ -161,11 +161,13 @@ func PrepareDataDir(dir string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("%w: %v", ErrDataDirNotWritable, err)
 	}
-	probe := filepath.Join(dir, probeName)
-	if err := os.WriteFile(probe, nil, 0o600); err != nil {
+	// A fixed name could overwrite a user's file or collide with another
+	// running instance. Only remove the unique file created by this check.
+	probe, err := os.CreateTemp(dir, probeName+".*")
+	if err != nil {
 		return fmt.Errorf("%w: %v", ErrDataDirNotWritable, err)
 	}
-	if err := os.Remove(probe); err != nil {
+	if err := errors.Join(probe.Close(), os.Remove(probe.Name())); err != nil {
 		return fmt.Errorf("%w: %v", ErrDataDirNotWritable, err)
 	}
 	return nil
