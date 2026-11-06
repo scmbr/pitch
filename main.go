@@ -47,6 +47,7 @@ func run() error {
 		Description: "Offline pitch practice trainer",
 		Services: []application.Service{
 			application.NewService(backend.NewSettingsService(store, dataDir, pickFolder)),
+			application.NewService(backend.NewRecordingService(dataDir)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
