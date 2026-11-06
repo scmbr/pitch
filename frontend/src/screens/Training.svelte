@@ -79,10 +79,17 @@
     timer.finish(performance.now());
     phase = 'finished';
     try {
-      saved = await recorder!.finish();
+      let thumbnail = '';
+      if (video.videoWidth && video.readyState >= 2) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 320; canvas.height = 180;
+        canvas.getContext('2d')?.drawImage(video, 0, 0, 320, 180);
+        thumbnail = canvas.toDataURL('image/jpeg', .75).split(',')[1];
+      }
+      saved = await recorder!.finish(timer.elapsed, thumbnail);
       recorder = null;
       message = 'training.saved';
-    } catch { await fail('training.diskError'); }
+    } catch (error) { await fail(String(error).includes('storageLimit') ? 'history.limitError' : 'training.diskError'); }
     finally { busy = false; if (video) video.srcObject = null; }
   }
 

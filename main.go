@@ -8,6 +8,7 @@ import (
 	"os"
 
 	backend "github.com/scmbr/pitch/internal/app"
+	"github.com/scmbr/pitch/internal/attempts"
 	"github.com/scmbr/pitch/internal/storage"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -42,15 +43,20 @@ func run() error {
 		}
 	}()
 
+	attemptStore := attempts.NewStore(db, dataDir, store)
+	if err := attemptStore.Recover(); err != nil {
+		log.Printf("recovering attempts: %v", err)
+	}
 	app := application.New(application.Options{
 		Name:        "Pitch",
 		Description: "Offline pitch practice trainer",
 		Services: []application.Service{
 			application.NewService(backend.NewSettingsService(store, dataDir, pickFolder)),
-			application.NewService(backend.NewRecordingService(dataDir)),
+			application.NewService(backend.NewRecordingService(dataDir, attemptStore.Add)),
+			application.NewService(backend.NewAttemptService(attemptStore, store)),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
+			Handler: mediaHandler(attemptStore, application.AssetFileServerFS(assets)),
 		},
 		Windows: webviewOptions(dataDir),
 	})

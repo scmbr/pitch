@@ -71,10 +71,10 @@ export class Recorder {
     await this.uploads;
   }
 
-  async finish() {
+  async finish(duration: number, thumbnail: string) {
     await this.stop();
     if (this.failure) { await this.abort(); throw this.failure; }
-    const id = await RecordingService.Finish(this.token);
+    const id = await RecordingService.Finish(this.token, duration, thumbnail);
     this.token = '';
     return id;
   }

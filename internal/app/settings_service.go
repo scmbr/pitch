@@ -73,7 +73,11 @@ func (s *SettingsService) Get() (SettingsView, error) {
 // Save checks that the data folder is usable now, so a bad choice is caught here
 // and not at the next start, and then writes the settings.
 func (s *SettingsService) Save(dataDir, language string) SaveResult {
-	next := settings.Settings{DataDir: dataDir, Language: language}
+	next, err := s.store.Load()
+	if err != nil && !errors.Is(err, settings.ErrCorrupt) {
+		return SaveResult{ErrorCode: CodeSaveFailed}
+	}
+	next.DataDir, next.Language = dataDir, language
 	if err := next.Validate(); err != nil {
 		return SaveResult{ErrorCode: errorCode(err)}
 	}
