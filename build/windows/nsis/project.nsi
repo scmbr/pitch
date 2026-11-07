@@ -33,6 +33,7 @@ Unicode true
 ####
 ## Include the wails tools
 ####
+!define WAILS_SKIP_WEBVIEW2
 !include "wails_tools.nsh"
 
 # The version information for this two must consist of 4 parts
@@ -66,6 +67,9 @@ ManifestDPIAware true
 !insertmacro MUI_UNPAGE_INSTFILES # Uninstalling page
 
 !insertmacro MUI_LANGUAGE "English" # Set the Language of the installer
+!insertmacro MUI_LANGUAGE "Russian"
+LangString MissingWebView ${LANG_ENGLISH} "Install Microsoft Edge WebView2 Runtime before installing Pitch. This installer does not download components."
+LangString MissingWebView ${LANG_RUSSIAN} "Перед установкой Pitch установите Microsoft Edge WebView2 Runtime. Установщик не скачивает компоненты."
 
 ## The following two statements can be used to sign the installer and the uninstaller. The path to the binaries are provided in %1
 #!uninstfinalize 'signtool --file "%1"'
@@ -82,6 +86,18 @@ ShowInstDetails show # This will always show the installation details.
 
 Function .onInit
    !insertmacro wails.checkArchitecture
+   SetRegView 32
+   ReadRegStr $0 HKLM "SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"
+   ${If} $0 == ""
+       ReadRegStr $0 HKCU "SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"
+   ${EndIf}
+   ${If} $0 == ""
+       IfSilent missingRuntimeSilent
+       MessageBox MB_OK "$(MissingWebView)"
+       missingRuntimeSilent:
+       SetErrorLevel 66
+       Abort
+   ${EndIf}
 FunctionEnd
 
 Section
@@ -105,9 +121,7 @@ SectionEnd
 Section "uninstall" 
     !insertmacro wails.setShellContext
 
-    RMDir /r "$AppData\${PRODUCT_EXECUTABLE}" # Remove the WebView2 DataPath
-
-    RMDir /r $INSTDIR
+    Delete "$INSTDIR\${PRODUCT_EXECUTABLE}"
 
     Delete "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk"
     Delete "$DESKTOP\${INFO_PRODUCTNAME}.lnk"
@@ -116,4 +130,5 @@ Section "uninstall"
     !insertmacro wails.unassociateCustomProtocols
 
     !insertmacro wails.deleteUninstaller
+    RMDir "$INSTDIR"
 SectionEnd

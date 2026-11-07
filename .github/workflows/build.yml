@@ -1,0 +1,57 @@
+name: Build and verify
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+      - run: npm ci
+        working-directory: frontend
+      - run: wails3 build
+      - run: go test ./...
+      - run: npm run check
+        working-directory: frontend
+      - run: npm test
+        working-directory: frontend
+      - name: Install NSIS on build runner
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nsis --no-progress -y
+          'C:\Program Files (x86)\NSIS' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Package Windows installer
+        if: runner.os == 'Windows'
+        run: wails3 task windows:package INSTALL_SCOPE=user
+      - name: Package macOS app
+        if: runner.os == 'macOS'
+        run: |
+          wails3 task darwin:package
+          tar -czf bin/pitch-macos-test.tar.gz -C bin pitch.app
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pitch-test-${{ matrix.os }}
+          path: |
+            bin/*installer.exe
+            bin/pitch.exe
+            bin/pitch-macos-test.tar.gz
+          if-no-files-found: error

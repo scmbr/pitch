@@ -6,7 +6,7 @@
         <key>CFBundleName</key>
             <string>Pitch</string>
         <key>CFBundleExecutable</key>
-            <string>pitch.exe</string>
+            <string>pitch</string>
         <key>CFBundleIdentifier</key>
             <string>io.github.scmbr.pitch</string>
         <key>CFBundleVersion</key>
@@ -25,5 +25,9 @@
             <string>true</string>
         <key>NSHumanReadableCopyright</key>
             <string>scmbr</string>
+        <key>NSCameraUsageDescription</key>
+            <string>Record video for your local practice attempts.</string>
+        <key>NSMicrophoneUsageDescription</key>
+            <string>Record audio for your local practice attempts.</string>
     </dict>
 </plist>
