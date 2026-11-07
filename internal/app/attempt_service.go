@@ -33,10 +33,8 @@ func (s *AttemptService) GetPolicy() (StoragePolicy, error) {
 	return StoragePolicy{LimitMB: p.StorageLimitMB, AutoDelete: p.AutoDelete}, err
 }
 func (s *AttemptService) SetPolicy(policy StoragePolicy) error {
-	p, err := s.settings.Load()
-	if err != nil {
-		return err
-	}
-	p.StorageLimitMB, p.AutoDelete = policy.LimitMB, policy.AutoDelete
-	return s.settings.Save(p)
+	return s.settings.Update(func(p *settings.Settings) error {
+		p.StorageLimitMB, p.AutoDelete = policy.LimitMB, policy.AutoDelete
+		return nil
+	})
 }

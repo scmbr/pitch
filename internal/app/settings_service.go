@@ -22,8 +22,11 @@ const (
 
 // SettingsView is what the settings screen shows.
 type SettingsView struct {
-	DataDir  string `json:"dataDir"`
-	Language string `json:"language"`
+	StorageLimitMB int64                `json:"storageLimitMB"`
+	AutoDelete     bool                 `json:"autoDelete"`
+	Preferences    settings.Preferences `json:"preferences"`
+	DataDir        string               `json:"dataDir"`
+	Language       string               `json:"language"`
 	// ActiveDataDir is the folder this run started with. A saved change to
 	// DataDir takes effect after a restart.
 	ActiveDataDir   string `json:"activeDataDir"`
@@ -62,6 +65,9 @@ func (s *SettingsService) Get() (SettingsView, error) {
 		return SettingsView{}, err
 	}
 	return SettingsView{
+		StorageLimitMB:  current.StorageLimitMB,
+		AutoDelete:      current.AutoDelete,
+		Preferences:     current.EffectivePreferences(),
 		DataDir:         current.DataDir,
 		Language:        current.Language,
 		ActiveDataDir:   s.activeDataDir,
@@ -84,8 +90,27 @@ func (s *SettingsService) Save(dataDir, language string) SaveResult {
 	if err := settings.PrepareDataDir(dataDir); err != nil {
 		return SaveResult{ErrorCode: errorCode(err)}
 	}
-	if err := s.store.Save(next); err != nil {
+	if err := s.store.Update(func(current *settings.Settings) error {
+		current.DataDir = dataDir
+		current.Language = language
+		return nil
+	}); err != nil {
 		return SaveResult{ErrorCode: errorCode(err)}
+	}
+	return SaveResult{OK: true}
+}
+
+func (s *SettingsService) SavePreferences(preferences settings.Preferences, limitMB int64, autoDelete bool) SaveResult {
+	if err := preferences.Validate(); err != nil {
+		return SaveResult{ErrorCode: "preferencesInvalid"}
+	}
+	if err := s.store.Update(func(current *settings.Settings) error {
+		current.Preferences = &preferences
+		current.StorageLimitMB = limitMB
+		current.AutoDelete = autoDelete
+		return nil
+	}); err != nil {
+		return SaveResult{ErrorCode: CodeSaveFailed}
 	}
 	return SaveResult{OK: true}
 }

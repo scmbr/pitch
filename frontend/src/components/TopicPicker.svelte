@@ -3,11 +3,12 @@
   import { TopicService } from '../../bindings/github.com/scmbr/pitch/internal/app';
   import type { Set } from '../../bindings/github.com/scmbr/pitch/internal/topics/models';
   import { i18n, type MessageKey } from '../i18n/index.svelte';
+  import { preferences } from '../lib/preferences.svelte';
   let { disabled = false, onTopic, onBusy }: { disabled?: boolean; onTopic: (topic: string) => void; onBusy: (busy: boolean) => void } = $props();
   const t = i18n.t;
   let sets = $state<Set[]>([]);
   let selected = $state<number[]>([]);
-  let avoid = $state(20);
+  let avoid = $state(preferences.value?.topicWindow ?? 20);
   let text = $state('');
   let busy = $state(true);
   let error = $state<MessageKey | null>(null);
