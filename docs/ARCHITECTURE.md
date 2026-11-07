@@ -77,7 +77,7 @@
 └── docs/
 ```
 
-Реализованы `internal/app`, `internal/settings`, `internal/storage`, `internal/nonet`, `internal/attempts`, `internal/projects` и `internal/slides`. Модуль тем и сравнение добавляются следующими этапами.
+Реализованы `internal/app`, `internal/settings`, `internal/storage`, `internal/nonet`, `internal/attempts`, `internal/projects`, `internal/slides`, `internal/topics` и сравнение попыток.
 
 ## Хранение данных
 
@@ -101,7 +101,9 @@
 - `attempts`: id, project_id, version_id, video_path, thumb_path, duration_sec, topic, scores (json), note, created_at
 - `slide_timings`: attempt_id, slide_index, start_sec, end_sec
 
-Таблицы `topic_sets` и `topics` запланированы для этапа импровизации. Настройки сейчас хранятся в JSON, таблицы `settings` нет.
+Миграция 0004 добавляет `topic_sets`, `topics` и `recent_topics`. `internal/topics` идемпотентно добавляет 30 авторских тем на каждом языке из встроенного JSON. TXT импортируется по строкам; CSV берёт первый столбец, поддерживает заголовок topic/тема, кавычки, переносы и разделители comma/semicolon. Лимиты: UTF-8, 2 МиБ файла, 10 000 тем, 2 000 символов на тему; дубли внутри файла исключаются.
+
+Выбор темы использует криптографический случайный индекс и транзакционно сохраняет историю последних 1 000 выборов. Запрет последних N учитывает одинаковый текст между наборами. Когда все выбранные темы входят в окно, используется самая давно показанная. Импровизация использует общий экран записи и проект свободной тренировки, текст темы сохраняется вместе с попыткой. Смена режима уничтожает текущий экран и освобождает его медиапотоки. Настройки хранятся в JSON, таблицы `settings` нет.
 
 ## Предметные потоки
 

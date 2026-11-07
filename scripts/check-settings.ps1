@@ -8,7 +8,7 @@ the native WebView bridge. The normal source and application have no test hook.
 All test data remains under the ignored data/ directory. No debugging port.
 #>
 [CmdletBinding()]
-param([ValidateSet('settings', 'training', 'projects')][string]$Scenario = 'settings')
+param([ValidateSet('settings', 'training', 'projects', 'impromptu')][string]$Scenario = 'settings')
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
@@ -41,6 +41,13 @@ if ($Scenario -eq 'projects') {
     $marker = 'backend.NewProjectService(projectStore, pickPresentationFile)'
     if (-not $main.Contains($marker)) { throw 'Project service overlay marker missing' }
     $main = $main.Replace($marker, 'backend.NewProjectService(projectStore, func(_ string, pattern string) (string,error) { if pattern == "*.pdf" { return os.Getenv("PITCH_CHECK_PDF"),nil }; return os.Getenv("PITCH_CHECK_PPTX"),nil })')
+}
+if ($Scenario -eq 'impromptu') {
+    $topics = "topic,tag`n`"Build a repair cafe, together`",community`nExplain a useful mistake,learning`nPitch a quiet workspace,work`n"
+    [IO.File]::WriteAllText((Join-Path $runRoot 'topics.csv'), $topics, $encoding)
+    $marker = 'backend.NewTopicService(topicStore, pickPresentationFile)'
+    if (-not $main.Contains($marker)) { throw 'Topic service overlay marker missing' }
+    $main = $main.Replace($marker, 'backend.NewTopicService(topicStore, func(_ string, _ string) (string,error) { return os.Getenv("PITCH_CHECK_TOPICS"),nil })')
 }
 $main = $main.Replace('return app.Run()', @'
     window.OnWindowEvent(events.Windows.WebViewNavigationCompleted, func(*application.WindowEvent) {
@@ -77,7 +84,7 @@ $null = New-Item -ItemType Directory -Path (Join-Path $runRoot 'config'), (Join-
 $defaultDir = Join-Path (Join-Path $runRoot 'home') 'Pitch'
 $changedDir = Join-Path $runRoot 'changed-data'
 $savedEnvironment = @{}
-foreach ($key in @('APPDATA', 'USERPROFILE', 'PITCH_CHECK_SCRIPT', 'PITCH_CHECK_NEXT_DIR', 'PITCH_CHECK_PDF', 'PITCH_CHECK_PPTX')) {
+foreach ($key in @('APPDATA', 'USERPROFILE', 'PITCH_CHECK_SCRIPT', 'PITCH_CHECK_NEXT_DIR', 'PITCH_CHECK_PDF', 'PITCH_CHECK_PPTX', 'PITCH_CHECK_TOPICS')) {
     $savedEnvironment[$key] = [Environment]::GetEnvironmentVariable($key)
 }
 $env:APPDATA = Join-Path $runRoot 'config'
@@ -85,6 +92,7 @@ $env:USERPROFILE = Join-Path $runRoot 'home'
 $env:PITCH_CHECK_SCRIPT = Join-Path $PSScriptRoot ('check-' + $Scenario + '.js')
 $env:PITCH_CHECK_PDF = Join-Path $runRoot 'talk.pdf'
 $env:PITCH_CHECK_PPTX = Join-Path $runRoot 'talk.pptx'
+$env:PITCH_CHECK_TOPICS = Join-Path $runRoot 'topics.csv'
 $app = $null
 try {
     $phases = if ($Scenario -ne 'settings') { @($Scenario) } else { @('edit', 'restart') }

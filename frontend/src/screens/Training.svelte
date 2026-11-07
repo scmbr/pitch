@@ -3,9 +3,14 @@
   import { i18n, type MessageKey } from '../i18n/index.svelte';
   import { TrainingTimer, formatTime } from '../lib/timer.js';
   import { Recorder } from '../lib/recorder';
+  import TopicPicker from '../components/TopicPicker.svelte';
   import type { Version } from '../../bindings/github.com/scmbr/pitch/internal/projects/models';
   import type { SlideTiming } from '../../bindings/github.com/scmbr/pitch/internal/attempts/models';
-  let { projectVersion = null, projectName = '', clearProject = () => {} }: { projectVersion?: Version | null; projectName?: string; clearProject?: () => void } = $props();
+  let { projectVersion = null, projectName = '', clearProject = () => {}, impromptu = false }: { projectVersion?: Version | null; projectName?: string; clearProject?: () => void; impromptu?: boolean } = $props();
+  let topic = $state('');
+  let topicBusy = $state(false);
+  let attemptTopic = '';
+  let preset = $state('standard');
   let slide = $state(0);
   let timings: SlideTiming[] = [];
   let slideStart = 0;
@@ -65,6 +70,7 @@
       message = 'training.durationError'; return;
     }
     busy = true; message = null; saved = ''; started = false; ready = false;
+    attemptTopic = impromptu ? topic : '';
     const capture = new Recorder();
     recorder = capture;
     capture.onFailure = () => { if (!disposed) void fail('training.diskError'); };
@@ -110,7 +116,7 @@
         canvas.getContext('2d')?.drawImage(video, 0, 0, 320, 180);
         thumbnail = canvas.toDataURL('image/jpeg', .75).split(',')[1];
       }
-      saved = await recorder!.finish({ duration: timer.elapsed, thumbnail, projectId: projectVersion?.projectId ?? 0, versionId: projectVersion?.id ?? 0, topic: '', timings: projectVersion ? timings : [] });
+      saved = await recorder!.finish({ duration: timer.elapsed, thumbnail, projectId: projectVersion?.projectId ?? 0, versionId: projectVersion?.id ?? 0, topic: attemptTopic, timings: projectVersion ? timings : [] });
       recorder = null;
       message = 'training.saved';
     } catch (error) { await fail(String(error).includes('storageLimit') ? 'history.limitError' : 'training.diskError'); }
@@ -134,7 +140,8 @@
 <svelte:window onkeydown={keys} />
 
 <main>
-  <h1>{t('training.title')}</h1>
+  <h1>{t(impromptu ? 'topics.impromptu' : 'training.title')}</h1>
+  {#if impromptu}<TopicPicker disabled={busy || (phase !== 'idle' && phase !== 'finished')} onTopic={text => topic=text} onBusy={value=>topicBusy=value} />{/if}
   {#if projectVersion}
     <p>{projectName} · {t('projects.versionNumber', { number: String(projectVersion.number) })}</p>
     {#if phase === 'idle' || phase === 'finished'}<button onclick={clearProject}>{t('history.free')}</button>{/if}
@@ -146,8 +153,11 @@
     </div>
   {/if}
   <div class="durations">
-    <label>{t('training.preparation')} <input type="number" min="0" max="3600" bind:value={preparation} disabled={phase !== 'idle' && phase !== 'finished'} /></label>
-    <label>{t('training.speech')} <input type="number" min="1" max="86400" bind:value={speech} disabled={phase !== 'idle' && phase !== 'finished'} /></label>
+    <label>{t('training.preset')}<select bind:value={preset} disabled={phase !== 'idle' && phase !== 'finished'} onchange={() => { if (preset !== 'custom') { preparation=30; speech=preset==='elevator'?60:preset==='demo'?180:120; } }}>
+      <option value="standard">{t('training.standard')}</option><option value="elevator">{t('training.elevator')}</option><option value="demo">{t('training.demo')}</option><option value="custom">{t('training.custom')}</option>
+    </select></label>
+    <label>{t('training.preparation')} <input type="number" min="0" max="3600" bind:value={preparation} oninput={() => preset='custom'} disabled={phase !== 'idle' && phase !== 'finished'} /></label>
+    <label>{t('training.speech')} <input type="number" min="1" max="86400" bind:value={speech} oninput={() => preset='custom'} disabled={phase !== 'idle' && phase !== 'finished'} /></label>
   </div>
   <div class="stage">
     <video bind:this={video} autoplay muted playsinline aria-label={t('training.preview')}></video>
@@ -159,7 +169,7 @@
   </div>
   <div class="actions">
     {#if phase === 'idle' || phase === 'finished'}
-      <button class="primary" onclick={start} disabled={busy}>{t('training.start')}</button>
+      <button class="primary" onclick={start} disabled={busy || (impromptu && (!topic || topicBusy))}>{t('training.start')}</button>
     {:else}
       <button onclick={pause} disabled={busy}>{t(paused ? 'training.resume' : 'training.pause')}</button>
       {#if phase === 'preparation'}
