@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 const (
@@ -37,14 +38,20 @@ const (
 // Settings is everything the user can configure. New fields must keep a
 // usable zero value so that older files still load.
 type Settings struct {
-	DataDir        string `json:"dataDir"`
-	Language       string `json:"language"`
-	StorageLimitMB int64  `json:"storageLimitMB"`
-	AutoDelete     bool   `json:"autoDelete"`
+	DataDir        string       `json:"dataDir"`
+	Language       string       `json:"language"`
+	StorageLimitMB int64        `json:"storageLimitMB"`
+	AutoDelete     bool         `json:"autoDelete"`
+	Preferences    *Preferences `json:"preferences,omitempty"`
 }
 
 // Validate checks the values without touching the disk.
 func (s Settings) Validate() error {
+	if s.Preferences != nil {
+		if err := s.Preferences.Validate(); err != nil {
+			return err
+		}
+	}
 	if s.StorageLimitMB < 0 || s.StorageLimitMB > 1024*1024 {
 		return errors.New("settings: invalid storage limit")
 	}
@@ -64,6 +71,7 @@ func (s Settings) Validate() error {
 
 // Store reads and writes one settings file.
 type Store struct {
+	mu       sync.Mutex
 	path     string
 	defaults Settings
 }
@@ -83,6 +91,12 @@ func (s *Store) Path() string { return s.path }
 // On a corrupt file it returns the defaults together with ErrCorrupt and
 // leaves the file untouched so the user can still recover it.
 func (s *Store) Load() (Settings, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.load()
+}
+
+func (s *Store) load() (Settings, error) {
 	data, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return s.defaults, nil
@@ -107,6 +121,26 @@ func (s *Store) Load() (Settings, error) {
 // Save validates and writes the settings. The file is replaced atomically so
 // a crash cannot leave a half-written file.
 func (s *Store) Save(v Settings) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.save(v)
+}
+
+// Update serializes read-modify-write operations across application services.
+func (s *Store) Update(change func(*Settings) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, err := s.load()
+	if err != nil && !errors.Is(err, ErrCorrupt) {
+		return err
+	}
+	if err := change(&current); err != nil {
+		return err
+	}
+	return s.save(current)
+}
+
+func (s *Store) save(v Settings) error {
 	if v.Language == "" {
 		v.Language = LanguageAuto
 	}

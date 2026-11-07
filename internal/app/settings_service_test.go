@@ -8,6 +8,27 @@ import (
 	"github.com/scmbr/pitch/internal/settings"
 )
 
+func TestPreferenceSaveAndBasicSaveKeepOtherFields(t *testing.T) {
+	svc, root := newService(t)
+	p := settings.DefaultPreferences()
+	p.Preparation = 0
+	p.Shortcuts["toggle"] = "Ctrl+KeyP"
+	if result := svc.SavePreferences(p, 25, true); !result.OK {
+		t.Fatalf("preferences: %+v", result)
+	}
+	if result := svc.Save(filepath.Join(root, "updated"), settings.LanguageEN); !result.OK {
+		t.Fatalf("basic save: %+v", result)
+	}
+	view, err := svc.Get()
+	if err != nil || view.Preferences.Preparation != 0 || view.Preferences.Shortcuts["toggle"] != "Ctrl+KeyP" || view.StorageLimitMB != 25 || !view.AutoDelete {
+		t.Fatalf("lost preferences: %+v %v", view, err)
+	}
+	p.Shortcuts["topic"] = "Ctrl+KeyP"
+	if result := svc.SavePreferences(p, 0, false); result.OK || result.ErrorCode != "preferencesInvalid" {
+		t.Fatalf("invalid preferences accepted: %+v", result)
+	}
+}
+
 func newService(t *testing.T) (*SettingsService, string) {
 	t.Helper()
 	root := t.TempDir()

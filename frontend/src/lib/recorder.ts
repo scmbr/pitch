@@ -1,5 +1,6 @@
 import { RecordingService } from '../../bindings/github.com/scmbr/pitch/internal/app';
 import type { Draft } from '../../bindings/github.com/scmbr/pitch/internal/attempts/models';
+import { preferences } from './preferences.svelte';
 
 // Uploads are ordered and bounded. A slow/full disk ends capture instead of
 // keeping an ever-growing backlog of unencoded recordings in memory.
@@ -14,9 +15,11 @@ export class Recorder {
   onFailure: () => void = () => {};
 
   async open() {
+    const options=preferences.value;
+    const low=options?.quality==='480p';
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 15, max: 30 } },
-      audio: true,
+      video: { width: { ideal: low?854:1280 }, height: { ideal: low?480:720 }, frameRate: { ideal: 15, max: 30 }, ...(options?.cameraId?{deviceId:{exact:options.cameraId}}:{}) },
+      audio: options?.microphoneId?{deviceId:{exact:options.microphoneId}}:true,
     });
     if (this.cancelled) { stream.getTracks().forEach(t => t.stop()); throw new Error('cancelled'); }
     this.stream = stream;

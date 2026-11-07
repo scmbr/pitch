@@ -24,7 +24,7 @@
     const fields=document.querySelectorAll('input[type=number]'); input(fields[0],0); input(fields[1],5);
     click('Start training'); await wait(()=>document.querySelector('.recording')?.textContent.includes('Recording'));
     await delay(1000);
-    document.body.focus(); window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+    document.body.focus(); window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',code:'ArrowRight',bubbles:true}));
     await wait(()=>document.querySelector('.slide')?.alt==='Slide 2 of 2');
     await delay(1000); click('Finish and save'); await wait(()=>document.querySelector('.saved'));
     click('History'); await wait(()=>document.querySelector('.attempt')); document.querySelector('.attempt').click();

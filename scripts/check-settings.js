@@ -44,6 +44,23 @@
         assert(document.activeElement === field, 'Control not focusable: ' + selector);
       }
       result.checks.push('English settings saved; main controls focusable');
+      await waitFor(() => document.querySelector('#preferencesForm'));
+      const preferencesForm=document.querySelector('#preferencesForm');
+      const numbers=preferencesForm.querySelectorAll('input[type=number]');
+      for(const [index,value] of [[0,7],[1,9]]){numbers[index].value=value;numbers[index].dispatchEvent(new Event('input',{bubbles:true}));}
+      const theme=preferencesForm.querySelectorAll('select')[1];theme.value='dark';theme.dispatchEvent(new Event('change',{bubbles:true}));
+      const historyKey=preferencesForm.querySelectorAll('input[readonly]')[7];
+      historyKey.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyH',key:'H',ctrlKey:true,shiftKey:true,bubbles:true}));
+      preferencesForm.requestSubmit();
+      await waitFor(()=>document.documentElement.dataset.theme==='dark');
+      const dataField=document.querySelector('#dataDir');
+      dataField.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyH',ctrlKey:true,shiftKey:true,bubbles:true}));
+      assert(document.querySelector('h1').textContent==='Settings','Shortcut interrupted text input');
+      window.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyH',ctrlKey:true,shiftKey:true,bubbles:true}));
+      await waitFor(()=>document.querySelector('h1')?.textContent==='History');
+      [...document.querySelectorAll('nav button')].find(b=>b.textContent==='Settings').click();
+      await waitFor(()=>document.querySelector('#dataDir'));
+      result.checks.push('preferences saved; custom history shortcut and text-entry isolation');
       const blocked = await new Promise(resolve => {
         const timer = setTimeout(() => resolve(false), 2000);
         document.addEventListener('securitypolicyviolation', event => {
@@ -64,6 +81,11 @@
       await waitFor(() => document.documentElement.lang === 'en');
       assert(!document.querySelector('.notice'), 'Restart notice remained after restart');
       result.checks.push('saved language and new data directory restored after restart');
+      await waitFor(()=>document.querySelector('#preferencesForm'));
+      const fields=document.querySelectorAll('#preferencesForm input[type=number]');
+      assert(fields[0].value==='7'&&fields[1].value==='9','Durations not restored');
+      assert(document.documentElement.dataset.theme==='dark','Theme not restored');
+      assert(document.querySelectorAll('#preferencesForm input[readonly]')[7].value==='Ctrl+Shift+KeyH','Shortcut not restored');
     }
     result.passed = true;
   } catch (error) {

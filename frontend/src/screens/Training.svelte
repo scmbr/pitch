@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
+  import { preferences } from '../lib/preferences.svelte';
   import { i18n, type MessageKey } from '../i18n/index.svelte';
   import { TrainingTimer, formatTime } from '../lib/timer.js';
   import { Recorder } from '../lib/recorder';
@@ -11,6 +12,22 @@
   let topicBusy = $state(false);
   let attemptTopic = '';
   let preset = $state('standard');
+  let picker=$state<TopicPicker>();
+  onMount(()=>{
+    if(preferences.value){preparation=preferences.value.preparation;speech=preferences.value.speech;preset='custom';}
+    const listener=(event:Event)=>{
+      const action=(event as CustomEvent<string>).detail;
+      if(busy) return;
+      if(action==='toggle') {if(phase==='idle'||phase==='finished'){if(!impromptu||(!topicBusy&&topic))void start();}else pause();}
+      if(action==='skip'&&phase==='preparation'){timer.skip(performance.now());update();}
+      if(action==='abort'&&phase!=='idle'&&phase!=='finished')void abort();
+      if(action==='topic')picker?.reroll();
+      if(action==='next')changeSlide(slide+1);
+      if(action==='previous')changeSlide(slide-1);
+    };
+    window.addEventListener('pitch-action',listener);
+    return()=>window.removeEventListener('pitch-action',listener);
+  });
   let slide = $state(0);
   let timings: SlideTiming[] = [];
   let slideStart = 0;
@@ -57,12 +74,6 @@
       slideStart = timer.elapsed;
     }
     slide = next;
-  }
-  function keys(event: KeyboardEvent) {
-    if (event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable]')) return;
-    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
-      event.preventDefault(); changeSlide(slide + (event.key === 'ArrowRight' ? 1 : -1));
-    }
   }
 
   async function start() {
@@ -137,11 +148,10 @@
   });
 </script>
 
-<svelte:window onkeydown={keys} />
 
 <main>
   <h1>{t(impromptu ? 'topics.impromptu' : 'training.title')}</h1>
-  {#if impromptu}<TopicPicker disabled={busy || (phase !== 'idle' && phase !== 'finished')} onTopic={text => topic=text} onBusy={value=>topicBusy=value} />{/if}
+  {#if impromptu}<TopicPicker bind:this={picker} disabled={busy || (phase !== 'idle' && phase !== 'finished')} onTopic={text => topic=text} onBusy={value=>topicBusy=value} />{/if}
   {#if projectVersion}
     <p>{projectName} · {t('projects.versionNumber', { number: String(projectVersion.number) })}</p>
     {#if phase === 'idle' || phase === 'finished'}<button onclick={clearProject}>{t('history.free')}</button>{/if}
