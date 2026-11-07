@@ -24,6 +24,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'process-identity.ps1')
 
 if (Test-Path -LiteralPath $OutputPath) {
     throw "Output already exists: $OutputPath"
@@ -72,7 +73,7 @@ while ($watch.Elapsed.TotalSeconds -lt $DurationSeconds) {
         $samples.Add([pscustomobject]@{
             TimestampUtc = $sampleTime
             FinishedAtUtc = [datetime]::UtcNow.ToString('o')
-            Processes = @($tree.Values | Sort-Object ProcessId | Select-Object ProcessId, ParentProcessId, Name, CreationDate)
+            Processes = @($tree.Values | Sort-Object ProcessId | Select-Object ProcessId, ParentProcessId, Name, CreationDate, @{Name='ProcessStartKey';Expression={ [PitchProcessIdentity]::Read([int]$_.ProcessId,[datetime]$_.CreationDate) }})
             TCP = @($tcp | Select-Object OwningProcess, LocalAddress, LocalPort, RemoteAddress, RemotePort, State)
             UDP = @($udp | Select-Object OwningProcess, LocalAddress, LocalPort)
         })

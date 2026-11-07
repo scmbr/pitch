@@ -33,6 +33,13 @@ jobs:
         working-directory: frontend
       - run: npm test
         working-directory: frontend
+      - run: node --test scripts/summarize-netlog.test.mjs
+      - name: Verify Windows network observer
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          ./scripts/process-identity.test.ps1
+          ./scripts/netwatch.test.ps1
       - name: Install NSIS on build runner
         if: runner.os == 'Windows'
         shell: pwsh

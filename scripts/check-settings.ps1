@@ -8,7 +8,7 @@ the native WebView bridge. The normal source and application have no test hook.
 All test data remains under the ignored data/ directory. No debugging port.
 #>
 [CmdletBinding()]
-param([ValidateSet('settings', 'training', 'projects', 'impromptu')][string]$Scenario = 'settings')
+param([ValidateSet('settings', 'training', 'projects', 'impromptu')][string]$Scenario = 'settings', [switch]$NetworkLog)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
@@ -36,6 +36,10 @@ $main = $main.Replace('Name:        "Pitch",', 'Name:        "Pitch",' + "`n" + 
         },
 '@)
 $main = $main.Replace('app.Window.NewWithOptions(', 'window := app.Window.NewWithOptions(')
+if ($NetworkLog) {
+    # Keep the browser alive after media cleanup to observe delayed background activity.
+    $main = $main.Replace('time.Sleep(time.Second)', 'time.Sleep(30 * time.Second)')
+}
 if ($Scenario -eq 'projects') {
     & (Join-Path $PSScriptRoot 'make-presentation-fixture.ps1') -Directory $runRoot
     $marker = 'backend.NewProjectService(projectStore, pickPresentationFile)'
@@ -62,12 +66,17 @@ $sourcePath = Join-Path $runRoot 'diagnostic-main.txt'
 [System.IO.File]::WriteAllText($sourcePath, $main, $encoding)
 $overlayPath = Join-Path $runRoot 'overlay.json'
 $overlay = @{ Replace = @{ (Join-Path $repo 'main.go') = $sourcePath } } | ConvertTo-Json
-if ($Scenario -ne 'settings') {
+if ($Scenario -ne 'settings' -or $NetworkLog) {
     $webviewPath = Join-Path $repo 'webview2.go'
     $webview = Get-Content -LiteralPath $webviewPath -Raw -Encoding UTF8
     $marker = 'AdditionalBrowserArgs: []string{'
     if (-not $webview.Contains($marker)) { throw 'WebView overlay marker missing' }
-    $webview = $webview.Replace($marker, $marker + '"--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream",')
+    if ($Scenario -ne 'settings') {
+        $webview = $webview.Replace($marker, $marker + '"--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream",')
+    }
+    if ($NetworkLog) {
+        $webview = $webview.Replace($marker, $marker + '"--log-net-log=" + filepath.Join(dataDir, "netlog.json"),')
+    }
     $webviewSource = Join-Path $runRoot 'diagnostic-webview.txt'
     [System.IO.File]::WriteAllText($webviewSource, $webview, $encoding)
     $overlay = @{ Replace = @{ (Join-Path $repo 'main.go') = $sourcePath; $webviewPath = $webviewSource } } | ConvertTo-Json
@@ -94,6 +103,7 @@ $env:PITCH_CHECK_PDF = Join-Path $runRoot 'talk.pdf'
 $env:PITCH_CHECK_PPTX = Join-Path $runRoot 'talk.pptx'
 $env:PITCH_CHECK_TOPICS = Join-Path $runRoot 'topics.csv'
 $app = $null
+$networkObservers = @()
 try {
     $phases = if ($Scenario -ne 'settings') { @($Scenario) } else { @('edit', 'restart') }
     foreach ($phase in $phases) {
@@ -102,6 +112,16 @@ try {
         $env:PITCH_CHECK_NEXT_DIR = if ($phase -eq 'edit') { $changedDir } else { '' }
         $app = Start-Process -FilePath $binary -WindowStyle Hidden -PassThru
         $null = $app.Handle
+        if ($NetworkLog) {
+            [IO.File]::WriteAllText((Join-Path $runRoot ($phase + '-process.json')), (@{ ProcessId=$app.Id; StartedUtc=$app.StartTime.ToUniversalTime().ToString('o') } | ConvertTo-Json), $encoding)
+            $observer = Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList @(
+                '-NoProfile', '-File', ('"' + (Join-Path $PSScriptRoot 'netwatch.ps1') + '"'),
+                '-ProcessId', [string]$app.Id, '-DurationSeconds', '150',
+                '-OutputPath', ('"' + (Join-Path $runRoot ($phase + '-sockets.json')) + '"')
+            ) -RedirectStandardOutput (Join-Path $runRoot ($phase + '-observer.log')) -RedirectStandardError (Join-Path $runRoot ($phase + '-observer-error.log'))
+            $null = $observer.Handle
+            $networkObservers += $observer
+        }
         $resultPath = Join-Path $activeDir 'gui-result.json'
         $deadline = [datetime]::UtcNow.AddSeconds(60)
         while (-not (Test-Path -LiteralPath $resultPath) -and -not $app.HasExited -and [datetime]::UtcNow -lt $deadline) {
@@ -110,7 +130,8 @@ try {
         if (-not (Test-Path -LiteralPath $resultPath)) { throw "Missing $phase result; see $runRoot" }
         $result = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if (-not $result.passed) { throw $result.error }
-        if (-not $app.WaitForExit(10000)) { throw 'Diagnostic application did not close' }
+        $exitTimeout = if ($NetworkLog) { 60000 } else { 10000 }
+        if (-not $app.WaitForExit($exitTimeout)) { throw 'Diagnostic application did not close' }
         if ($app.ExitCode -ne 0) { throw "Diagnostic application exited with $($app.ExitCode)" }
         if ($Scenario -eq 'settings') {
             $settingsPath = Join-Path (Join-Path $runRoot 'config') 'Pitch/settings.json'
@@ -127,6 +148,15 @@ try {
     }
 } finally {
     if ($null -ne $app -and -not $app.HasExited) { Stop-Process -Id $app.Id }
+    $networkFailure = $null
+    foreach ($observer in $networkObservers) {
+        try {
+            if (-not $observer.WaitForExit(15000)) { $observer.Kill(); throw 'Network observer did not complete.' }
+            if ($observer.ExitCode -ne 0) { throw 'Network observer failed; see observer-error.log in the run directory.' }
+        } catch { $networkFailure = $_ }
+        finally { $observer.Dispose() }
+    }
     foreach ($key in $savedEnvironment.Keys) { [Environment]::SetEnvironmentVariable($key, $savedEnvironment[$key]) }
+    if ($null -ne $networkFailure) { throw $networkFailure }
 }
 Write-Output "Reports: $runRoot"
