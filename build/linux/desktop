@@ -3,11 +3,11 @@ Version=1.0
 Name=Pitch
 Comment=Offline pitch practice trainer
 # The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/pitch.exe %u
+Exec=/usr/local/bin/pitch %u
 Terminal=false
 Type=Application
-Icon=pitch.exe
+Icon=pitch
 Categories=Utility;
-StartupWMClass=pitch.exe
+StartupWMClass=pitch
 
  
